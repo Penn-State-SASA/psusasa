@@ -1,0 +1,170 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { sanityFetch, sanityFetchSingle } from "../../../../../sanity/lib/client";
+import { urlFor } from "../../../../../sanity/lib/image";
+import {
+  eventBySlugQuery,
+  allEventsQuery,
+} from "../../../../../sanity/lib/queries";
+import type { SanityEvent } from "@/lib/types";
+
+interface EventPageProps {
+  params: { slug: string };
+}
+
+export async function generateStaticParams() {
+  const events = await sanityFetch<SanityEvent>(allEventsQuery);
+  return events.map((event) => ({ slug: event.slug.current }));
+}
+
+export async function generateMetadata({
+  params,
+}: EventPageProps): Promise<Metadata> {
+  const event = await sanityFetchSingle<SanityEvent>(eventBySlugQuery, {
+    slug: params.slug,
+  });
+  if (!event) return { title: "Event Not Found | SASA" };
+  return {
+    title: `${event.title} | SASA at Penn State`,
+    description: event.description || `${event.title} — a SASA event`,
+  };
+}
+
+export const revalidate = 60;
+
+export default async function EventDetailPage({ params }: EventPageProps) {
+  const event = await sanityFetchSingle<SanityEvent>(eventBySlugQuery, {
+    slug: params.slug,
+  });
+
+  if (!event) notFound();
+
+  const formattedDate = new Date(event.date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const formattedTime = new Date(event.date).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const categoryColors: Record<string, string> = {
+    "Cultural Show": "bg-sasa-red-600 text-white",
+    Festival: "bg-sasa-gold-600 text-sasa-red-900",
+    Social: "bg-sasa-forest text-white",
+    THON: "bg-sasa-red-500 text-white",
+    "Community Service": "bg-sasa-sage text-sasa-red-900",
+  };
+
+  return (
+    <div>
+      {/* Back link */}
+      <div className="bg-gray-50 py-4">
+        <div className="mx-auto max-w-4xl px-4">
+          <Link
+            href="/events"
+            className="inline-flex items-center gap-1 text-sm text-sasa-neutral-500 hover:text-sasa-red-900"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back to Events
+          </Link>
+        </div>
+      </div>
+
+      <article className="py-12">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          {/* Cover Image */}
+          {event.coverImage && (
+            <div className="relative mb-8 aspect-[16/9] overflow-hidden rounded-2xl">
+              <Image
+                src={urlFor(event.coverImage).width(1200).height(675).url()}
+                alt={event.title}
+                fill
+                className="object-cover"
+                priority
+              />
+            </div>
+          )}
+
+          {/* Category badge */}
+          {event.category && (
+            <span
+              className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${
+                categoryColors[event.category] || "bg-gray-200 text-gray-700"
+              }`}
+            >
+              {event.category}
+            </span>
+          )}
+
+          {/* Title */}
+          <h1 className="mt-4 font-heading text-3xl font-bold text-sasa-red-900 sm:text-4xl">
+            {event.title}
+          </h1>
+
+          {/* Date & Time */}
+          <div className="mt-4 flex items-center gap-4 text-sasa-neutral-500">
+            <div className="flex items-center gap-2">
+              <svg
+                className="h-5 w-5 text-sasa-gold-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+                />
+              </svg>
+              <span>{formattedDate}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg
+                className="h-5 w-5 text-sasa-gold-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span>{formattedTime}</span>
+            </div>
+          </div>
+
+          {/* Description */}
+          {event.description && (
+            <div className="mt-8 rounded-xl border border-gray-100 bg-gray-50 p-6">
+              <p className="whitespace-pre-wrap text-lg leading-relaxed text-sasa-neutral-500">
+                {event.description}
+              </p>
+            </div>
+          )}
+        </div>
+      </article>
+    </div>
+  );
+}

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="40" viewBox="0 0 200 40" fill="#cda563">
+  <!-- Center medallion -->
+  <circle cx="100" cy="20" r="12" fill="none" stroke="#cda563" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="100" cy="20" r="8" fill="none" stroke="#cda563" stroke-width="1" opacity="0.4"/>
+  <circle cx="100" cy="20" r="3" opacity="0.5"/>
+  <!-- Petals around center -->
+  <ellipse cx="100" cy="6" rx="3" ry="5" opacity="0.4"/>
+  <ellipse cx="100" cy="34" rx="3" ry="5" opacity="0.4"/>
+  <ellipse cx="86" cy="20" rx="5" ry="3" opacity="0.4"/>
+  <ellipse cx="114" cy="20" rx="5" ry="3" opacity="0.4"/>
+  <!-- Diagonal petals -->
+  <ellipse cx="90" cy="10" rx="3" ry="4" transform="rotate(-45 90 10)" opacity="0.3"/>
+  <ellipse cx="110" cy="10" rx="3" ry="4" transform="rotate(45 110 10)" opacity="0.3"/>
+  <ellipse cx="90" cy="30" rx="3" ry="4" transform="rotate(45 90 30)" opacity="0.3"/>
+  <ellipse cx="110" cy="30" rx="3" ry="4" transform="rotate(-45 110 30)" opacity="0.3"/>
+  <!-- Connecting line -->
+  <line x1="0" y1="20" x2="84" y2="20" stroke="#cda563" stroke-width="1" opacity="0.3"/>
+  <line x1="116" y1="20" x2="200" y2="20" stroke="#cda563" stroke-width="1" opacity="0.3"/>
+  <!-- Small dots along line -->
+  <circle cx="25" cy="20" r="2" opacity="0.3"/>
+  <circle cx="50" cy="20" r="2.5" opacity="0.35"/>
+  <circle cx="75" cy="20" r="2" opacity="0.3"/>
+  <circle cx="125" cy="20" r="2" opacity="0.3"/>
+  <circle cx="150" cy="20" r="2.5" opacity="0.35"/>
+  <circle cx="175" cy="20" r="2" opacity="0.3"/>
+</svg>

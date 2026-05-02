@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" fill="#cda563">
+  <!-- Paisley motif 1 -->
+  <path d="M50 30c-20 0-35 15-35 35s15 35 35 35c8 0 15-3 20-8-3 12-14 20-27 20C23 112 8 97 8 77S23 42 43 42c3 0 5 0 7 1V30z" opacity="0.6"/>
+  <circle cx="45" cy="65" r="4" opacity="0.4"/>
+  <circle cx="38" cy="55" r="2.5" opacity="0.3"/>
+  <circle cx="38" cy="75" r="2.5" opacity="0.3"/>
+  <!-- Paisley motif 2 -->
+  <path d="M150 130c20 0 35 15 35 35s-15 35-35 35c-8 0-15-3-20-8 3 12 14 20 27 20 20 0 35-15 35-35s-15-35-35-35c-3 0-5 0-7 1v-13z" opacity="0.6"/>
+  <circle cx="155" cy="165" r="4" opacity="0.4"/>
+  <circle cx="162" cy="155" r="2.5" opacity="0.3"/>
+  <circle cx="162" cy="175" r="2.5" opacity="0.3"/>
+  <!-- Decorative dots -->
+  <circle cx="100" cy="100" r="3" opacity="0.3"/>
+  <circle cx="20" cy="180" r="2" opacity="0.2"/>
+  <circle cx="180" cy="20" r="2" opacity="0.2"/>
+  <!-- Small paisley accents -->
+  <path d="M120 10c-8 0-14 6-14 14s6 14 14 14c3 0 6-1 8-3-1 5-6 8-11 8-8 0-14-6-14-14s6-14 14-14c1 0 2 0 3 0V10z" opacity="0.4"/>
+  <path d="M80 160c8 0 14 6 14 14s-6 14-14 14c-3 0-6-1-8-3 1 5 6 8 11 8 8 0 14-6 14-14s-6-14-14-14c-1 0-2 0-3 0v-5z" opacity="0.4"/>
+</svg>

@@ -4,20 +4,33 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground: #1a1a1a;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, sans-serif;
+}
+
+@layer components {
+  .section-divider-mandala {
+    background-image: url('/patterns/mandala-border.svg');
+    background-repeat: repeat-x;
+    background-size: contain;
+    height: 40px;
+    opacity: 0.15;
+  }
+
+  .hero-paisley-overlay {
+    background-image: url('/patterns/paisley-tile.svg');
+    background-repeat: repeat;
+    background-size: 200px;
+    opacity: 0.06;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
 }
 
 @layer utilities {
