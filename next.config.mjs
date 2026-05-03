@@ -15,3 +15,18 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async redirects() {
+    return [
+      {
+        source: '/studio',
+        destination: '/studio/structure',
+        permanent: false,
+      },
+    ];
+  },
+};
+
+export default nextConfig;
