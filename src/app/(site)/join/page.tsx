@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
+import dynamic from "next/dynamic";
 import SectionHeading from "@/components/shared/SectionHeading";
+
+const MembershipForm = dynamic(
+  () => import("@/components/join/MembershipForm"),
+  { ssr: false }
+);
 
 export const metadata: Metadata = {
   title: "Join | SASA at Penn State",
@@ -70,19 +76,11 @@ export default function JoinPage() {
       {/* Membership Form */}
       <section className="bg-gray-50 py-16">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-          <SectionHeading subtitle="Fill out the form below to become a SASA member">
-            Membership Form
+          <SectionHeading subtitle="Fill out the form below to join — $35 annual membership">
+            Become a member!
           </SectionHeading>
-          <div className="mt-10 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <iframe
-              src="https://docs.google.com/forms/d/e/1FAIpQLSf6bPZaqRWWQZVngRGuIQ8u31_ynbK5muWKVVR00UjaBQ3Kcw/viewform?embedded=true"
-              width="100%"
-              height="800"
-              className="border-0"
-              title="SASA Membership Form"
-            >
-              Loading form...
-            </iframe>
+          <div className="mt-10">
+            <MembershipForm />
           </div>
           <p className="mt-4 text-center text-sm text-sasa-neutral-400">
             Having trouble with the form? Email us directly at{" "}
