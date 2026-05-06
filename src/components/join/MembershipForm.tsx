@@ -781,11 +781,7 @@ export default function MembershipForm() {
                 appearance: { theme: "stripe" },
               }}
             >
-              <CheckoutForm
-                returnUrl={`${
-                  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
-                }/join/return`}
-              />
+              <CheckoutForm />
             </Elements>
           )}
 
@@ -804,7 +800,7 @@ export default function MembershipForm() {
   );
 }
 
-function CheckoutForm({ returnUrl }: { returnUrl: string }) {
+function CheckoutForm() {
   const stripe = useStripe();
   const elements = useElements();
   const [isLoading, setIsLoading] = useState(false);
@@ -819,7 +815,9 @@ function CheckoutForm({ returnUrl }: { returnUrl: string }) {
 
     const { error } = await stripe.confirmPayment({
       elements,
-      confirmParams: { return_url: returnUrl },
+      confirmParams: {
+        return_url: `${window.location.origin}/join/return`,
+      },
     });
 
     if (error) {
