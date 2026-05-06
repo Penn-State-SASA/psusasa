@@ -161,47 +161,33 @@ export default function MembershipForm() {
   function validateStep2(): boolean {
     const next: Record<string, string> = {};
 
-    if (!step2.major.trim()) next.major = "Major is required.";
-
-    if (!step2.hometown.trim()) next.hometown = "Hometown is required.";
-
-    if (!step2.gender.selected) {
-      next.gender = "Gender is required.";
-    } else if (
+    if (
       step2.gender.selected === "Other" &&
       !step2.gender.otherText.trim()
     ) {
       next.gender = "Please specify your gender.";
     }
 
-    if (step2.religion.selected.length === 0) {
-      next.religion = "Religion is required.";
-    } else if (
+    if (
       step2.religion.selected.includes("Other") &&
       !step2.religion.otherText.trim()
     ) {
       next.religion = "Please specify your religion.";
     }
 
-    if (step2.identity.selected.length === 0) {
-      next.identity = "Identity is required.";
-    } else if (
+    if (
       step2.identity.selected.includes("Other") &&
       !step2.identity.otherText.trim()
     ) {
       next.identity = "Please specify your identity.";
     }
 
-    if (!step2.generation.selected) {
-      next.generation = "Generation is required.";
-    } else if (
+    if (
       step2.generation.selected === "Other" &&
       !step2.generation.otherText.trim()
     ) {
       next.generation = "Please specify your generation.";
     }
-
-    if (!step2.instagram.trim()) next.instagram = "Instagram handle is required.";
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -454,7 +440,7 @@ export default function MembershipForm() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                What are you studying/what is your major? <span className="text-red-500">*</span>
+                What are you studying/what is your major?
               </label>
               <input
                 type="text"
@@ -471,7 +457,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                Where is your hometown? <span className="text-red-500">*</span>
+                Where is your hometown?
               </label>
               <input
                 type="text"
@@ -488,7 +474,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Gender <span className="text-red-500">*</span>
+                Gender
               </label>
               <div className="space-y-2">
                 {["Male", "Female", "Other"].map((g) => (
@@ -532,7 +518,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                What religion do you identify with? <span className="text-red-500">*</span>
+                What religion do you identify with?
               </label>
               <div className="space-y-2">
                 {RELIGION_OPTIONS.map((r) => (
@@ -599,8 +585,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Which of the following identities do you identify with?{" "}
-                <span className="text-red-500">*</span>
+                Which of the following identities do you identify with?
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {IDENTITY_OPTIONS.map((id) => (
@@ -667,7 +652,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Which generation do you identify with? <span className="text-red-500">*</span>
+                Which generation do you identify with?
               </label>
               <div className="space-y-2">
                 {GENERATION_OPTIONS.map((g) => (
@@ -727,7 +712,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                What is your Instagram handle? <span className="text-red-500">*</span>
+                What is your Instagram handle?
               </label>
               <input
                 type="text"
