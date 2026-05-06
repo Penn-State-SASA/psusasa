@@ -1,51 +1,11 @@
 import Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
+import { appendMemberToAirtable } from "@/lib/airtable";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
-async function appendMemberToAirtable(
-  metadata: Record<string, string>,
-  paymentIntentId: string
-) {
-  const tableName = process.env.AIRTABLE_TABLE_NAME ?? "Members";
-  const url = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      fields: {
-        Timestamp: new Date().toISOString(),
-        "First Name": metadata.firstName,
-        "Last Name": metadata.lastName,
-        "PSU Email": metadata.psuEmail,
-        Phone: metadata.phone,
-        Year: metadata.year,
-        Major: metadata.major,
-        Hometown: metadata.hometown,
-        Gender: metadata.gender,
-        Religion: metadata.religion,
-        Identity: metadata.identity,
-        Generation: metadata.generation,
-        Instagram: metadata.instagram,
-        "Stripe Payment Intent ID": paymentIntentId,
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Airtable error: ${res.status} ${body}`);
-  }
-
-  console.log(`Member ${metadata.psuEmail} added to Airtable`);
-}
 
 export async function POST(req: NextRequest) {
   try {

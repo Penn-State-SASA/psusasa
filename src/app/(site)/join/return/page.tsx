@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Stripe from "stripe";
+import { appendMemberToAirtable } from "@/lib/airtable";
 
 export const metadata: Metadata = {
   title: "Welcome | SASA at Penn State",
@@ -57,6 +58,14 @@ export default async function JoinReturnPage({
   }
 
   const isComplete = paymentIntent?.status === "succeeded";
+
+  if (isComplete && paymentIntent?.metadata) {
+    try {
+      await appendMemberToAirtable(paymentIntent.metadata, paymentIntent.id);
+    } catch (err) {
+      console.error("Airtable write failed:", err);
+    }
+  }
 
   return (
     <div>
