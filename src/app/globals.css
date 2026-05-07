@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@import "react-phone-number-input/style.css";
+
+.sasa-phone-input .PhoneInputInput {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.875rem;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #1a1a1a;

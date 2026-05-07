@@ -8,6 +8,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -146,8 +147,8 @@ export default function MembershipForm() {
 
     if (!step1.phone.trim()) {
       next.phone = "Phone number is required.";
-    } else if (!/^\d{10,15}$/.test(step1.phone.trim())) {
-      next.phone = "Enter 10-15 digits, no dashes or spaces.";
+    } else if (!isValidPhoneNumber(step1.phone.trim())) {
+      next.phone = "Please enter a valid phone number.";
     }
 
     if (!step1.year) {
@@ -368,14 +369,17 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                Phone Number (please enter XXXXXXXXXX - no dashes/spaces){" "}
-                <span className="text-red-500">*</span>
+                Phone Number <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
+              <PhoneInput
+                international
+                countryCallingCodeEditable={false}
+                defaultCountry="US"
                 value={step1.phone}
-                onChange={(e) => setStep1((p) => ({ ...p, phone: e.target.value }))}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                onChange={(value) =>
+                  setStep1((p) => ({ ...p, phone: value ?? "" }))
+                }
+                className="sasa-phone-input w-full rounded border border-gray-300 px-3 py-2 text-sm focus-within:border-sasa-red-900 focus-within:ring-1 focus-within:ring-sasa-red-900"
               />
               {errors.phone && (
                 <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
