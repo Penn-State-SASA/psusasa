@@ -145,9 +145,10 @@ function formatNationalNumber(digits: string, country: Country): string {
   if (!digits) return "";
   if (NANP_COUNTRIES.has(country)) {
     const d = digits.slice(0, 10);
-    if (d.length <= 3) return d;
-    if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
-    return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+    if (d.length === 0) return "";
+    if (d.length <= 3) return `(${d}`;
+    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+    return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
   }
   const formatter = new AsYouType(country);
   return formatter.input(digits) || digits;
@@ -502,23 +503,47 @@ export default function MembershipForm() {
                     </ul>
                   )}
                 </div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  placeholder={
-                    NANP_COUNTRIES.has(phoneCountry) ? "XXX-XXX-XXXX" : ""
-                  }
-                  value={formatNationalNumber(step1.phone, phoneCountry)}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, "");
-                    const limit = nanpDigitLimit(phoneCountry);
-                    const capped =
-                      limit !== null ? digits.slice(0, limit) : digits;
-                    setStep1((p) => ({ ...p, phone: capped }));
-                  }}
-                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
-                />
+                {(() => {
+                  const isNanp = NANP_COUNTRIES.has(phoneCountry);
+                  const formatted = formatNationalNumber(
+                    step1.phone,
+                    phoneCountry
+                  );
+                  const mask = "(XXX) XXX-XXXX";
+                  const showOverlay =
+                    isNanp && formatted.length < mask.length;
+                  return (
+                    <div className="relative flex-1">
+                      {showOverlay && (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-0 px-3 py-2 text-sm font-mono flex items-center"
+                        >
+                          <span className="invisible">{formatted}</span>
+                          <span className="text-gray-300">
+                            {mask.slice(formatted.length)}
+                          </span>
+                        </div>
+                      )}
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel-national"
+                        value={formatted}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          const limit = nanpDigitLimit(phoneCountry);
+                          const capped =
+                            limit !== null ? digits.slice(0, limit) : digits;
+                          setStep1((p) => ({ ...p, phone: capped }));
+                        }}
+                        className={`relative w-full rounded border border-gray-300 px-3 py-2 text-sm bg-transparent focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900 ${
+                          isNanp ? "font-mono" : ""
+                        }`}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
               {errors.phone && (
                 <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
