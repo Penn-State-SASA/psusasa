@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -8,13 +8,15 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import { isValidPhoneNumber } from "react-phone-number-input";
-import PhoneNationalInput from "react-phone-number-input/input";
 import {
+  isValidPhoneNumber,
   getCountries,
   getCountryCallingCode,
-} from "react-phone-number-input/input";
+  type Country,
+} from "react-phone-number-input";
+import flags from "react-phone-number-input/flags";
 import en from "react-phone-number-input/locale/en.json";
+import { AsYouType } from "libphonenumber-js";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -111,10 +113,48 @@ function resolveSingle(f: OtherableSingle): string {
   );
 }
 
-function countryFlag(code: string): string {
-  return code
-    .toUpperCase()
-    .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+const NANP_COUNTRIES = new Set<Country>([
+  "US",
+  "CA",
+  "AG",
+  "AI",
+  "AS",
+  "BB",
+  "BM",
+  "BS",
+  "DM",
+  "DO",
+  "GD",
+  "GU",
+  "JM",
+  "KN",
+  "KY",
+  "LC",
+  "MP",
+  "MS",
+  "PR",
+  "SX",
+  "TC",
+  "TT",
+  "VC",
+  "VG",
+  "VI",
+]);
+
+function formatNationalNumber(digits: string, country: Country): string {
+  if (!digits) return "";
+  if (NANP_COUNTRIES.has(country)) {
+    const d = digits.slice(0, 10);
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  }
+  const formatter = new AsYouType(country);
+  return formatter.input(digits) || digits;
+}
+
+function nanpDigitLimit(country: Country): number | null {
+  return NANP_COUNTRIES.has(country) ? 10 : null;
 }
 
 export default function MembershipForm() {
@@ -122,9 +162,23 @@ export default function MembershipForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [piLoading, setPiLoading] = useState(false);
-  const [phoneCountry, setPhoneCountry] = useState<
-    ReturnType<typeof getCountries>[number]
-  >("US");
+  const [phoneCountry, setPhoneCountry] = useState<Country>("US");
+  const [countryOpen, setCountryOpen] = useState(false);
+  const countryDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!countryOpen) return;
+    function onDown(e: MouseEvent) {
+      if (
+        countryDropdownRef.current &&
+        !countryDropdownRef.current.contains(e.target as Node)
+      ) {
+        setCountryOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [countryOpen]);
 
   const [step1, setStep1] = useState<Step1>({
     firstName: "",
@@ -162,7 +216,9 @@ export default function MembershipForm() {
 
     if (!step1.phone.trim()) {
       next.phone = "Phone number is required.";
-    } else if (!isValidPhoneNumber(step1.phone.trim())) {
+    } else if (
+      !isValidPhoneNumber(`+${getCountryCallingCode(phoneCountry)}${step1.phone}`)
+    ) {
       next.phone = "Please enter a valid phone number.";
     }
 
@@ -239,7 +295,7 @@ export default function MembershipForm() {
       firstName: step1.firstName,
       lastName: step1.lastName,
       psuEmail: step1.psuEmail,
-      phone: step1.phone,
+      phone: `+${getCountryCallingCode(phoneCountry)}${step1.phone}`,
       year: step1.year,
       major: step2.major,
       hometown: step2.hometown,
@@ -387,31 +443,81 @@ export default function MembershipForm() {
                 Phone Number <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
-                <select
-                  aria-label="Country"
-                  value={phoneCountry}
-                  onChange={(e) => {
-                    setPhoneCountry(
-                      e.target.value as ReturnType<typeof getCountries>[number]
-                    );
-                    setStep1((p) => ({ ...p, phone: "" }));
-                  }}
-                  className="rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
-                >
-                  {getCountries().map((c) => (
-                    <option key={c} value={c}>
-                      {countryFlag(c)} {en[c] ?? c} +{getCountryCallingCode(c)}
-                    </option>
-                  ))}
-                </select>
-                <PhoneNationalInput
-                  country={phoneCountry}
-                  international={false}
-                  value={step1.phone}
-                  onChange={(value) =>
-                    setStep1((p) => ({ ...p, phone: value ?? "" }))
+                <div className="relative" ref={countryDropdownRef}>
+                  <button
+                    type="button"
+                    aria-label="Country"
+                    aria-haspopup="listbox"
+                    aria-expanded={countryOpen}
+                    onClick={() => setCountryOpen((o) => !o)}
+                    className="flex items-center gap-1.5 h-full rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                  >
+                    <span className="inline-block w-6 h-4 overflow-hidden">
+                      {flags[phoneCountry]
+                        ? React.createElement(flags[phoneCountry]!, {
+                            title: en[phoneCountry] ?? phoneCountry,
+                          })
+                        : null}
+                    </span>
+                    <span className="text-gray-700">
+                      +{getCountryCallingCode(phoneCountry)}
+                    </span>
+                    <span className="text-gray-400 text-xs">▾</span>
+                  </button>
+                  {countryOpen && (
+                    <ul
+                      role="listbox"
+                      className="absolute z-10 mt-1 max-h-64 w-72 overflow-auto rounded border border-gray-300 bg-white py-1 text-sm shadow-lg"
+                    >
+                      {getCountries().map((c) => {
+                        const Flag = flags[c];
+                        return (
+                          <li
+                            key={c}
+                            role="option"
+                            aria-selected={c === phoneCountry}
+                            onClick={() => {
+                              setPhoneCountry(c);
+                              setStep1((p) => ({ ...p, phone: "" }));
+                              setCountryOpen(false);
+                            }}
+                            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-gray-100 ${
+                              c === phoneCountry ? "bg-gray-50" : ""
+                            }`}
+                          >
+                            <span className="inline-block w-6 h-4 overflow-hidden flex-shrink-0">
+                              {Flag
+                                ? React.createElement(Flag, {
+                                    title: en[c] ?? c,
+                                  })
+                                : null}
+                            </span>
+                            <span className="flex-1 truncate">{en[c] ?? c}</span>
+                            <span className="text-gray-500">
+                              +{getCountryCallingCode(c)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  placeholder={
+                    NANP_COUNTRIES.has(phoneCountry) ? "XXX-XXX-XXXX" : ""
                   }
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                  value={formatNationalNumber(step1.phone, phoneCountry)}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "");
+                    const limit = nanpDigitLimit(phoneCountry);
+                    const capped =
+                      limit !== null ? digits.slice(0, limit) : digits;
+                    setStep1((p) => ({ ...p, phone: capped }));
+                  }}
+                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
                 />
               </div>
               {errors.phone && (
