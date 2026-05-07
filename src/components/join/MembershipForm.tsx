@@ -8,7 +8,13 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import { isValidPhoneNumber } from "react-phone-number-input";
+import PhoneNationalInput from "react-phone-number-input/input";
+import {
+  getCountries,
+  getCountryCallingCode,
+} from "react-phone-number-input/input";
+import en from "react-phone-number-input/locale/en.json";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -105,11 +111,20 @@ function resolveSingle(f: OtherableSingle): string {
   );
 }
 
+function countryFlag(code: string): string {
+  return code
+    .toUpperCase()
+    .replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+}
+
 export default function MembershipForm() {
   const [step, setStep] = useState<Step>(1);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [piLoading, setPiLoading] = useState(false);
+  const [phoneCountry, setPhoneCountry] = useState<
+    ReturnType<typeof getCountries>[number]
+  >("US");
 
   const [step1, setStep1] = useState<Step1>({
     firstName: "",
@@ -371,16 +386,34 @@ export default function MembershipForm() {
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
                 Phone Number <span className="text-red-500">*</span>
               </label>
-              <PhoneInput
-                international
-                countryCallingCodeEditable={false}
-                defaultCountry="US"
-                value={step1.phone}
-                onChange={(value) =>
-                  setStep1((p) => ({ ...p, phone: value ?? "" }))
-                }
-                className="sasa-phone-input w-full rounded border border-gray-300 px-3 py-2 text-sm focus-within:border-sasa-red-900 focus-within:ring-1 focus-within:ring-sasa-red-900"
-              />
+              <div className="flex gap-2">
+                <select
+                  aria-label="Country"
+                  value={phoneCountry}
+                  onChange={(e) => {
+                    setPhoneCountry(
+                      e.target.value as ReturnType<typeof getCountries>[number]
+                    );
+                    setStep1((p) => ({ ...p, phone: "" }));
+                  }}
+                  className="rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                >
+                  {getCountries().map((c) => (
+                    <option key={c} value={c}>
+                      {countryFlag(c)} {en[c] ?? c} +{getCountryCallingCode(c)}
+                    </option>
+                  ))}
+                </select>
+                <PhoneNationalInput
+                  country={phoneCountry}
+                  international={false}
+                  value={step1.phone}
+                  onChange={(value) =>
+                    setStep1((p) => ({ ...p, phone: value ?? "" }))
+                  }
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                />
+              </div>
               {errors.phone && (
                 <p className="mt-1 text-xs text-red-500">{errors.phone}</p>
               )}
