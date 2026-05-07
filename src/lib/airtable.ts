@@ -1,0 +1,64 @@
+export async function appendMemberToAirtable(
+  metadata: Record<string, string>,
+  paymentIntentId: string
+) {
+  const tableName = process.env.AIRTABLE_TABLE_NAME ?? "Members";
+  const baseUrl = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
+
+  // Skip if a record with this Stripe Payment Intent ID already exists.
+  const filter = encodeURIComponent(
+    `{Stripe Payment Intent ID} = '${paymentIntentId}'`
+  );
+  const lookup = await fetch(
+    `${baseUrl}?filterByFormula=${filter}&maxRecords=1`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      },
+      cache: "no-store",
+    }
+  );
+
+  if (lookup.ok) {
+    const data = (await lookup.json()) as { records?: unknown[] };
+    if (data.records && data.records.length > 0) {
+      console.log(
+        `Member ${metadata.psuEmail} already in Airtable (${paymentIntentId})`
+      );
+      return;
+    }
+  }
+
+  const res = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fields: {
+        Timestamp: new Date().toISOString(),
+        "First Name": metadata.firstName,
+        "Last Name": metadata.lastName,
+        "PSU Email": metadata.psuEmail,
+        Phone: metadata.phone,
+        Year: metadata.year,
+        Major: metadata.major,
+        Hometown: metadata.hometown,
+        Gender: metadata.gender,
+        Religion: metadata.religion,
+        Identity: metadata.identity,
+        Generation: metadata.generation,
+        Instagram: metadata.instagram,
+        "Stripe Payment Intent ID": paymentIntentId,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+
+  console.log(`Member ${metadata.psuEmail} added to Airtable`);
+}
