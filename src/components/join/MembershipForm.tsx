@@ -509,7 +509,7 @@ export default function MembershipForm() {
                     step1.phone,
                     phoneCountry
                   );
-                  const mask = "(XXX) XXX-XXXX";
+                  const mask = "(000) 000-0000";
                   const showOverlay =
                     isNanp && formatted.length < mask.length;
                   return (
