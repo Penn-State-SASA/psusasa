@@ -756,7 +756,7 @@ export default function MembershipForm() {
                 SASA Membership
               </span>
               <span className="text-2xl font-bold text-sasa-gold-600">
-                $35.00
+                $0.50
               </span>
             </div>
           </div>

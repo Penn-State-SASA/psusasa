@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     };
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: 3500,
+      amount: 50,
       currency: "usd",
       metadata,
       receipt_email: psuEmail ?? undefined,
