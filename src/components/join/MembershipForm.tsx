@@ -334,7 +334,7 @@ export default function MembershipForm() {
   return (
     <div
       ref={formRef}
-      className="scroll-mt-8 rounded-xl border border-gray-200 bg-white p-8 shadow-sm"
+      className="scroll-mt-24 rounded-xl border border-gray-200 bg-white p-8 shadow-sm"
     >
       {/* Step Indicator */}
       <div className="mb-8 flex items-center justify-between">
