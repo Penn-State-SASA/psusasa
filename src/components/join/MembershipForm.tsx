@@ -513,6 +513,22 @@ export default function MembershipForm() {
                     aria-haspopup="listbox"
                     aria-expanded={countryOpen}
                     onClick={() => setCountryOpen((o) => !o)}
+                    onKeyDown={(e) => {
+                      if (e.key.length !== 1 || !/[a-zA-Z]/.test(e.key)) return;
+                      const letter = e.key.toLowerCase();
+                      const shortcuts: Record<string, Country> = {
+                        u: "US",
+                        i: "IN",
+                        c: "CA",
+                        k: "GB",
+                      };
+                      const target = shortcuts[letter];
+                      if (target) {
+                        e.preventDefault();
+                        setPhoneCountry(target);
+                        setStep1((p) => ({ ...p, phone: "" }));
+                      }
+                    }}
                     className="flex items-center gap-1.5 h-full rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
                   >
                     <span className="inline-block w-6 h-4 overflow-hidden">
