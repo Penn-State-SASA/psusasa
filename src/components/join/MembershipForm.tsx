@@ -113,6 +113,35 @@ function resolveSingle(f: OtherableSingle): string {
   );
 }
 
+const STORAGE_KEY = "sasa-membership-form-v1";
+
+interface PersistedForm {
+  step: 1 | 2;
+  phoneCountry: Country;
+  step1: Step1;
+  step2: Step2;
+}
+
+function loadPersisted(): PersistedForm | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedForm;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !parsed.step1 ||
+      !parsed.step2
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 const NANP_COUNTRIES = new Set<Country>([
   "US",
   "CA",
@@ -159,11 +188,17 @@ function nanpDigitLimit(country: Country): number | null {
 }
 
 export default function MembershipForm() {
-  const [step, setStep] = useState<Step>(1);
+  const persisted = useRef<PersistedForm | null>(
+    typeof window === "undefined" ? null : loadPersisted()
+  ).current;
+
+  const [step, setStep] = useState<Step>(persisted?.step ?? 1);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [piLoading, setPiLoading] = useState(false);
-  const [phoneCountry, setPhoneCountry] = useState<Country>("US");
+  const [phoneCountry, setPhoneCountry] = useState<Country>(
+    persisted?.phoneCountry ?? "US"
+  );
   const [countryOpen, setCountryOpen] = useState(false);
   const countryDropdownRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -186,23 +221,43 @@ export default function MembershipForm() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [countryOpen]);
 
-  const [step1, setStep1] = useState<Step1>({
-    firstName: "",
-    lastName: "",
-    psuEmail: "",
-    phone: "",
-    year: "",
-  });
+  const [step1, setStep1] = useState<Step1>(
+    persisted?.step1 ?? {
+      firstName: "",
+      lastName: "",
+      psuEmail: "",
+      phone: "",
+      year: "",
+    }
+  );
 
-  const [step2, setStep2] = useState<Step2>({
-    major: "",
-    hometown: "",
-    gender: { selected: "", otherText: "" },
-    religion: { selected: [], otherText: "" },
-    identity: { selected: [], otherText: "" },
-    generation: { selected: "", otherText: "" },
-    instagram: "",
-  });
+  const [step2, setStep2] = useState<Step2>(
+    persisted?.step2 ?? {
+      major: "",
+      hometown: "",
+      gender: { selected: "", otherText: "" },
+      religion: { selected: [], otherText: "" },
+      identity: { selected: [], otherText: "" },
+      generation: { selected: "", otherText: "" },
+      instagram: "",
+    }
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (step === 3) return;
+    try {
+      const data: PersistedForm = {
+        step: step as 1 | 2,
+        phoneCountry,
+        step1,
+        step2,
+      };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore quota / serialization errors
+    }
+  }, [step, phoneCountry, step1, step2]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
