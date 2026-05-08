@@ -10,7 +10,6 @@ import {
 } from "@stripe/react-stripe-js";
 import {
   isValidPhoneNumber,
-  getCountries,
   getCountryCallingCode,
   type Country,
 } from "react-phone-number-input";
@@ -514,6 +513,22 @@ export default function MembershipForm() {
                     aria-haspopup="listbox"
                     aria-expanded={countryOpen}
                     onClick={() => setCountryOpen((o) => !o)}
+                    onKeyDown={(e) => {
+                      if (e.key.length !== 1 || !/[a-zA-Z]/.test(e.key)) return;
+                      const letter = e.key.toLowerCase();
+                      const shortcuts: Record<string, Country> = {
+                        u: "US",
+                        i: "IN",
+                        c: "CA",
+                        k: "GB",
+                      };
+                      const target = shortcuts[letter];
+                      if (target) {
+                        e.preventDefault();
+                        setPhoneCountry(target);
+                        setStep1((p) => ({ ...p, phone: "" }));
+                      }
+                    }}
                     className="flex items-center gap-1.5 h-full rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
                   >
                     <span className="inline-block w-6 h-4 overflow-hidden">
@@ -533,7 +548,7 @@ export default function MembershipForm() {
                       role="listbox"
                       className="absolute z-10 mt-1 max-h-64 w-72 overflow-auto rounded border border-gray-300 bg-white py-1 text-sm shadow-lg"
                     >
-                      {getCountries().map((c) => {
+                      {(["US", "IN", "CA", "GB"] as Country[]).map((c) => {
                         const Flag = flags[c];
                         return (
                           <li
