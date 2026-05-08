@@ -166,6 +166,11 @@ export default function MembershipForm() {
   const [phoneCountry, setPhoneCountry] = useState<Country>("US");
   const [countryOpen, setCountryOpen] = useState(false);
   const countryDropdownRef = useRef<HTMLDivElement | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [step]);
 
   useEffect(() => {
     if (!countryOpen) return;
@@ -328,7 +333,10 @@ export default function MembershipForm() {
 
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+    <div
+      ref={formRef}
+      className="scroll-mt-24 rounded-xl border border-gray-200 bg-white p-8 shadow-sm"
+    >
       {/* Step Indicator */}
       <div className="mb-8 flex items-center justify-between">
         {[1, 2, 3].map((s, idx) => (
