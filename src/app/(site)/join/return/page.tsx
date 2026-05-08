@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Stripe from "stripe";
 import { appendMemberToAirtable } from "@/lib/airtable";
+import ClearSavedForm from "@/components/join/ClearSavedForm";
 
 export const metadata: Metadata = {
   title: "Welcome | SASA at Penn State",
@@ -86,6 +87,7 @@ export default async function JoinReturnPage({
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           {isComplete ? (
             <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+              <ClearSavedForm />
               {/* Checkmark */}
               <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-sasa-gold-400/20">
                 <svg
