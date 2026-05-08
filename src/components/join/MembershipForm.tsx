@@ -10,7 +10,6 @@ import {
 } from "@stripe/react-stripe-js";
 import {
   isValidPhoneNumber,
-  getCountries,
   getCountryCallingCode,
   type Country,
 } from "react-phone-number-input";
@@ -533,7 +532,7 @@ export default function MembershipForm() {
                       role="listbox"
                       className="absolute z-10 mt-1 max-h-64 w-72 overflow-auto rounded border border-gray-300 bg-white py-1 text-sm shadow-lg"
                     >
-                      {getCountries().map((c) => {
+                      {(["US", "IN", "CA", "GB"] as Country[]).map((c) => {
                         const Flag = flags[c];
                         return (
                           <li
