@@ -2,5 +2,20 @@ import event from "./event";
 import officer from "./officer";
 import galleryImage from "./galleryImage";
 import announcement from "./announcement";
+import siteSettings from "./siteSettings";
+import homePage from "./homePage";
+import aboutPage from "./aboutPage";
+import joinPage from "./joinPage";
+import membershipFormCopy from "./membershipFormCopy";
 
-export const schemaTypes = [event, officer, galleryImage, announcement];
+export const schemaTypes = [
+  event,
+  officer,
+  galleryImage,
+  announcement,
+  siteSettings,
+  homePage,
+  aboutPage,
+  joinPage,
+  membershipFormCopy,
+];
