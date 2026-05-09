@@ -1,5 +1,8 @@
 import Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
+import { sanityFetchSingle } from "../../../../sanity/lib/client";
+import { membershipFormCopyQuery } from "../../../../sanity/lib/queries";
+import type { MembershipFormCopy } from "../../../../sanity/lib/types";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -37,8 +40,16 @@ export async function POST(req: NextRequest) {
       instagram: String(instagram ?? "").slice(0, 500),
     };
 
+    const copy = await sanityFetchSingle<MembershipFormCopy>(
+      membershipFormCopyQuery
+    );
+    const amount =
+      typeof copy?.priceCents === "number" && copy.priceCents >= 50
+        ? Math.round(copy.priceCents)
+        : 50;
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: 50,
+      amount,
       currency: "usd",
       metadata,
       receipt_email: psuEmail ?? undefined,

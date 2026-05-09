@@ -1,7 +1,50 @@
 import Link from "next/link";
 import Image from "next/image";
+import type { ContactCopy, FooterCopy, NavItem } from "../../../sanity/lib/types";
 
-export default function Footer() {
+const FALLBACK_FOOTER: Required<FooterCopy> = {
+  tagline: "South Asian Student Association at Penn State",
+  quickLinksHeading: "Quick Links",
+  contactHeading: "Contact Us",
+  socialHeading: "Follow Us",
+  copyright:
+    "© {year} Penn State South Asian Student Association. All rights reserved.",
+};
+
+const FALLBACK_CONTACT: Required<ContactCopy> = {
+  email: "exec.psusasa@gmail.com",
+  instagramHandle: "@psusasa",
+  instagramUrl: "https://instagram.com/psusasa",
+  tiktokHandle: "@sasapsu",
+  tiktokUrl: "https://tiktok.com/@sasapsu",
+  officeAddress: "204 HUB\nPenn State University Park",
+};
+
+const FALLBACK_QUICK_LINKS: NavItem[] = [
+  { href: "/about", label: "About Us" },
+  { href: "/events", label: "Events" },
+  { href: "/eboard", label: "E-Board" },
+  { href: "/gallery", label: "Gallery" },
+  { href: "/join", label: "Join SASA" },
+];
+
+interface FooterProps {
+  footer?: FooterCopy | null;
+  contact?: ContactCopy | null;
+  quickLinks?: NavItem[] | null;
+}
+
+export default function Footer({ footer, contact, quickLinks }: FooterProps) {
+  const f = { ...FALLBACK_FOOTER, ...(footer ?? {}) };
+  const c = { ...FALLBACK_CONTACT, ...(contact ?? {}) };
+  const links =
+    quickLinks && quickLinks.length > 0 ? quickLinks : FALLBACK_QUICK_LINKS;
+
+  const copyright = f.copyright.replace(
+    "{year}",
+    String(new Date().getFullYear())
+  );
+
   return (
     <footer className="bg-sasa-red-900 text-sasa-gold-400/90">
       {/* Mandala border */}
@@ -17,7 +60,7 @@ export default function Footer() {
             height={60}
           />
           <p className="text-center text-sm text-sasa-gold-400/70">
-            South Asian Student Association at Penn State
+            {f.tagline}
           </p>
         </div>
 
@@ -25,22 +68,16 @@ export default function Footer() {
           {/* Quick Links */}
           <div>
             <h3 className="font-heading text-lg font-semibold text-sasa-gold-400">
-              Quick Links
+              {f.quickLinksHeading}
             </h3>
             <ul className="mt-4 space-y-2 text-sm">
-              {[
-                { href: "/about", label: "About Us" },
-                { href: "/events", label: "Events" },
-                { href: "/eboard", label: "E-Board" },
-                { href: "/gallery", label: "Gallery" },
-                { href: "/join", label: "Join SASA" },
-              ].map((link) => (
-                <li key={link.href}>
+              {links.map((link) => (
+                <li key={link.href ?? link.label}>
                   <Link
-                    href={link.href}
+                    href={link.href ?? "#"}
                     className="transition-colors hover:text-sasa-gold-400"
                   >
-                    {link.label}
+                    {link.label ?? ""}
                   </Link>
                 </li>
               ))}
@@ -50,31 +87,33 @@ export default function Footer() {
           {/* Contact */}
           <div>
             <h3 className="font-heading text-lg font-semibold text-sasa-gold-400">
-              Contact Us
+              {f.contactHeading}
             </h3>
             <ul className="mt-4 space-y-2 text-sm">
               <li>
                 <a
-                  href="mailto:exec.psusasa@gmail.com"
+                  href={`mailto:${c.email}`}
                   className="transition-colors hover:text-sasa-gold-400"
                 >
-                  exec.psusasa@gmail.com
+                  {c.email}
                 </a>
               </li>
-              <li>Instagram DM: @psusasa</li>
-              <li>204 HUB, Penn State University Park</li>
+              <li>Instagram DM: {c.instagramHandle}</li>
+              {c.officeAddress.split("\n").map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
             </ul>
           </div>
 
           {/* Socials */}
           <div>
             <h3 className="font-heading text-lg font-semibold text-sasa-gold-400">
-              Follow Us
+              {f.socialHeading}
             </h3>
             <div className="mt-4 flex gap-4">
               {/* Instagram */}
               <a
-                href="https://instagram.com/psusasa"
+                href={c.instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
@@ -86,7 +125,7 @@ export default function Footer() {
               </a>
               {/* TikTok */}
               <a
-                href="https://tiktok.com/@sasapsu"
+                href={c.tiktokUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="TikTok"
@@ -98,7 +137,7 @@ export default function Footer() {
               </a>
               {/* Email */}
               <a
-                href="mailto:exec.psusasa@gmail.com"
+                href={`mailto:${c.email}`}
                 aria-label="Email"
                 className="rounded-full bg-sasa-red-700/40 p-2 transition-colors hover:bg-sasa-gold-600/20"
               >
@@ -111,7 +150,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-10 border-t border-sasa-red-700/50 pt-6 text-center text-xs text-sasa-gold-400/60">
-          <p>&copy; {new Date().getFullYear()} Penn State South Asian Student Association. All rights reserved.</p>
+          <p>{copyright}</p>
         </div>
       </div>
     </footer>

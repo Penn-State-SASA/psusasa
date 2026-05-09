@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -16,6 +16,9 @@ import {
 import flags from "react-phone-number-input/flags";
 import en from "react-phone-number-input/locale/en.json";
 import { AsYouType } from "libphonenumber-js";
+import { PortableText } from "@portabletext/react";
+import type { PortableTextBlock } from "@portabletext/types";
+import type { MembershipFormCopy } from "../../../sanity/lib/types";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -28,7 +31,7 @@ interface Step1 {
   lastName: string;
   psuEmail: string;
   phone: string;
-  year: "Freshman" | "Sophomore" | "Junior" | "Senior" | "Grad Student" | "";
+  year: string;
 }
 
 interface OtherableSingle {
@@ -51,7 +54,7 @@ interface Step2 {
   instagram: string;
 }
 
-const IDENTITY_OPTIONS = [
+const IDENTITY_FALLBACK = [
   "Assamese",
   "Bengali",
   "Bihari",
@@ -75,7 +78,7 @@ const IDENTITY_OPTIONS = [
   "Telugu",
 ];
 
-const RELIGION_OPTIONS = [
+const RELIGION_FALLBACK = [
   "Hindu",
   "Muslim",
   "Christian",
@@ -86,12 +89,119 @@ const RELIGION_OPTIONS = [
   "Not Religious",
 ];
 
-const GENERATION_OPTIONS = [
+const GENERATION_FALLBACK = [
   "1st generation (born outside the US)",
   "1.5 generation (born abroad, moved to US as a young child)",
   "2nd generation (born in the US)",
   "3rd generation+ (parents born in the US)",
 ];
+
+const GENDER_FALLBACK = ["Male", "Female"];
+
+const YEAR_FALLBACK = [
+  "Freshman",
+  "Sophomore",
+  "Junior",
+  "Senior",
+  "Grad Student",
+];
+
+const YEAR_ORDER: Record<string, number> = {
+  Freshman: 0,
+  Sophomore: 1,
+  Junior: 2,
+  Senior: 3,
+  "Grad Student": 4,
+};
+
+const FALLBACK_INTRO_BLOCKS: PortableTextBlock[] = [
+  {
+    _type: "block",
+    _key: "fb-1",
+    style: "normal",
+    children: [
+      {
+        _type: "span",
+        _key: "s1",
+        text: "Thank you for your interest in joining our community of Desi students here at Penn State. 😊",
+        marks: [],
+      },
+    ],
+    markDefs: [],
+  } as unknown as PortableTextBlock,
+  {
+    _type: "block",
+    _key: "fb-2",
+    style: "normal",
+    children: [
+      {
+        _type: "span",
+        _key: "s2",
+        text: "Benefits of membership include:",
+        marks: ["strong"],
+      },
+    ],
+    markDefs: [],
+  } as unknown as PortableTextBlock,
+  ...[
+    "Free & discounted cultural & social events",
+    "Free food & perks (Holi t-shirt, goodie bags, etc.) at specific events",
+    "Priority tickets to social events & partner org events",
+    "Access to GroupMe to get latest news/connect with others",
+    "Eligible to apply for freshman liaison/vacant admin board positions",
+  ].map(
+    (text, i) =>
+      ({
+        _type: "block",
+        _key: `fb-li-${i}`,
+        style: "normal",
+        listItem: "bullet",
+        level: 1,
+        children: [
+          { _type: "span", _key: `s-li-${i}`, text, marks: [] },
+        ],
+        markDefs: [],
+      }) as unknown as PortableTextBlock
+  ),
+  {
+    _type: "block",
+    _key: "fb-end",
+    style: "normal",
+    children: [
+      {
+        _type: "span",
+        _key: "send",
+        text: "We are so excited to meet and get to know each and everyone of you this year!",
+        marks: [],
+      },
+    ],
+    markDefs: [],
+  } as unknown as PortableTextBlock,
+];
+
+const PT_COMPONENTS = {
+  block: {
+    normal: ({ children }: { children?: React.ReactNode }) => (
+      <p className="leading-relaxed">{children}</p>
+    ),
+  },
+  list: {
+    bullet: ({ children }: { children?: React.ReactNode }) => (
+      <ul className="my-2 ml-5 list-disc space-y-1">{children}</ul>
+    ),
+  },
+  listItem: {
+    bullet: ({ children }: { children?: React.ReactNode }) => (
+      <li>{children}</li>
+    ),
+  },
+  marks: {
+    strong: ({ children }: { children?: React.ReactNode }) => (
+      <strong className="font-semibold text-sasa-red-900">{children}</strong>
+    ),
+    em: ({ children }: { children?: React.ReactNode }) => <em>{children}</em>,
+  },
+};
 
 function resolveMulti(f: OtherableMulti): string {
   const vals = [...f.selected];
@@ -141,6 +251,54 @@ function loadPersisted(): PersistedForm | null {
   }
 }
 
+interface ResolvedOptions {
+  year: string[];
+  gender: string[];
+  religion: string[];
+  identity: string[];
+  generation: string[];
+}
+
+function reconcileSingle(
+  f: OtherableSingle,
+  validValues: string[]
+): OtherableSingle {
+  if (f.selected === "" || f.selected === "Other") return f;
+  return validValues.includes(f.selected)
+    ? f
+    : { selected: "", otherText: "" };
+}
+
+function reconcileMulti(
+  f: OtherableMulti,
+  validValues: string[]
+): OtherableMulti {
+  const filtered = f.selected.filter(
+    (v) => v === "Other" || validValues.includes(v)
+  );
+  return { selected: filtered, otherText: f.otherText };
+}
+
+function reconcilePersisted(
+  p: PersistedForm,
+  opts: ResolvedOptions
+): PersistedForm {
+  return {
+    ...p,
+    step1: {
+      ...p.step1,
+      year: opts.year.includes(p.step1.year) ? p.step1.year : "",
+    },
+    step2: {
+      ...p.step2,
+      gender: reconcileSingle(p.step2.gender, opts.gender),
+      religion: reconcileMulti(p.step2.religion, opts.religion),
+      identity: reconcileMulti(p.step2.identity, opts.identity),
+      generation: reconcileSingle(p.step2.generation, opts.generation),
+    },
+  };
+}
+
 const NANP_COUNTRIES = new Set<Country>([
   "US",
   "CA",
@@ -186,17 +344,53 @@ function nanpDigitLimit(country: Country): number | null {
   return NANP_COUNTRIES.has(country) ? 10 : null;
 }
 
-export default function MembershipForm() {
+function formatPrice(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+interface MembershipFormProps {
+  copy?: MembershipFormCopy | null;
+}
+
+export default function MembershipForm({ copy }: MembershipFormProps) {
+  // Resolve options once per render — code appends "Other" itself; CMS list never includes it.
+  const options = useMemo<ResolvedOptions>(() => {
+    const yearList =
+      copy?.step1?.yearOptions && copy.step1.yearOptions.length > 0
+        ? copy.step1.yearOptions
+        : YEAR_FALLBACK;
+    const yearSorted = [...yearList].sort(
+      (a, b) =>
+        (YEAR_ORDER[a] ?? Number.MAX_SAFE_INTEGER) -
+        (YEAR_ORDER[b] ?? Number.MAX_SAFE_INTEGER)
+    );
+
+    const sortAlpha = (xs: string[] | undefined, fallback: string[]) =>
+      [...(xs && xs.length > 0 ? xs : fallback)].sort((a, b) =>
+        a.localeCompare(b)
+      );
+
+    return {
+      year: yearSorted,
+      gender: sortAlpha(copy?.step2?.genderOptions, GENDER_FALLBACK),
+      religion: sortAlpha(copy?.step2?.religionOptions, RELIGION_FALLBACK),
+      identity: sortAlpha(copy?.step2?.identityOptions, IDENTITY_FALLBACK),
+      generation: sortAlpha(copy?.step2?.generationOptions, GENERATION_FALLBACK),
+    };
+  }, [copy]);
+
+  // Hydrate persisted state and reconcile against current options.
   const persisted = useRef<PersistedForm | null>(
     typeof window === "undefined" ? null : loadPersisted()
   ).current;
+  const reconciled = persisted ? reconcilePersisted(persisted, options) : null;
 
-  const [step, setStep] = useState<Step>(persisted?.step ?? 1);
+  const [step, setStep] = useState<Step>(reconciled?.step ?? 1);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [piLoading, setPiLoading] = useState(false);
   const [phoneCountry, setPhoneCountry] = useState<Country>(
-    persisted?.phoneCountry ?? "US"
+    reconciled?.phoneCountry ?? "US"
   );
   const [countryOpen, setCountryOpen] = useState(false);
   const countryDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -221,7 +415,7 @@ export default function MembershipForm() {
   }, [countryOpen]);
 
   const [step1, setStep1] = useState<Step1>(
-    persisted?.step1 ?? {
+    reconciled?.step1 ?? {
       firstName: "",
       lastName: "",
       psuEmail: "",
@@ -231,7 +425,7 @@ export default function MembershipForm() {
   );
 
   const [step2, setStep2] = useState<Step2>(
-    persisted?.step2 ?? {
+    reconciled?.step2 ?? {
       major: "",
       hometown: "",
       gender: { selected: "", otherText: "" },
@@ -260,30 +454,111 @@ export default function MembershipForm() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Resolved labels with fallbacks (memoized for clarity).
+  const t = useMemo(() => {
+    const stepLabels = copy?.stepLabels;
+    const s1 = copy?.step1;
+    const s2 = copy?.step2;
+    const s3 = copy?.step3;
+    return {
+      stepIndicator: [
+        stepLabels?.step1 ?? "Personal Info",
+        stepLabels?.step2 ?? "Demographics",
+        stepLabels?.step3 ?? "Payment",
+      ],
+      step1: {
+        intro: s1?.intro,
+        firstName: s1?.labels?.firstName ?? "First Name",
+        lastName: s1?.labels?.lastName ?? "Last Name",
+        psuEmail: s1?.labels?.psuEmail ?? "PSU Email",
+        phone: s1?.labels?.phone ?? "Phone Number",
+        year: s1?.labels?.year ?? "Year",
+        firstNameRequired:
+          s1?.errors?.firstNameRequired ?? "First name is required.",
+        lastNameRequired:
+          s1?.errors?.lastNameRequired ?? "Last name is required.",
+        psuEmailRequired:
+          s1?.errors?.psuEmailRequired ?? "PSU email is required.",
+        psuEmailDomain:
+          s1?.errors?.psuEmailDomain ?? "Email must end in @psu.edu.",
+        phoneRequired:
+          s1?.errors?.phoneRequired ?? "Phone number is required.",
+        phoneInvalid:
+          s1?.errors?.phoneInvalid ?? "Please enter a valid phone number.",
+        yearRequired: s1?.errors?.yearRequired ?? "Please select your year.",
+        nextLabel: s1?.nextLabel ?? "Next →",
+      },
+      step2: {
+        heading: s2?.heading ?? "Demographic Information",
+        intro:
+          s2?.intro ??
+          "These questions are optional but we recommend you fill out so we are able to get to know you and have information about our membership when planning events",
+        major:
+          s2?.labels?.major ?? "What are you studying/what is your major?",
+        hometown: s2?.labels?.hometown ?? "Where is your hometown?",
+        gender: s2?.labels?.gender ?? "Gender",
+        religion:
+          s2?.labels?.religion ?? "What religion do you identify with?",
+        identity:
+          s2?.labels?.identity ??
+          "Which of the following identities do you identify with?",
+        generation:
+          s2?.labels?.generation ?? "Which generation do you identify with?",
+        instagram: s2?.labels?.instagram ?? "What is your Instagram handle?",
+        otherSpecify: s2?.placeholders?.otherSpecify ?? "Please specify",
+        instagramPh: s2?.placeholders?.instagram ?? "@yourhandle",
+        otherLabel: s2?.otherLabel ?? "Other",
+        genderOther:
+          s2?.errors?.genderOther ?? "Please specify your gender.",
+        religionOther:
+          s2?.errors?.religionOther ?? "Please specify your religion.",
+        identityOther:
+          s2?.errors?.identityOther ?? "Please specify your identity.",
+        generationOther:
+          s2?.errors?.generationOther ?? "Please specify your generation.",
+        backLabel: s2?.backLabel ?? "← Back",
+        nextLabel: s2?.nextLabel ?? "Next →",
+      },
+      step3: {
+        summaryHeading: s3?.summaryHeading ?? "Order Summary",
+        productName: s3?.productName ?? "SASA Membership",
+        loadingPaymentText:
+          s3?.loadingPaymentText ?? "Loading payment form...",
+        submitLabel: s3?.submitLabel ?? "Become a Member!",
+        processingLabel: s3?.processingLabel ?? "Processing...",
+        genericError:
+          s3?.genericError ??
+          "Failed to initialize payment. Please try again.",
+        backLabel: s3?.backLabel ?? "← Back",
+      },
+    };
+  }, [copy]);
+
+  const priceDisplay = formatPrice(copy?.priceCents ?? 50);
+
   function validateStep1(): boolean {
     const next: Record<string, string> = {};
 
-    if (!step1.firstName.trim())
-      next.firstName = "First name is required.";
+    if (!step1.firstName.trim()) next.firstName = t.step1.firstNameRequired;
 
-    if (!step1.lastName.trim()) next.lastName = "Last name is required.";
+    if (!step1.lastName.trim()) next.lastName = t.step1.lastNameRequired;
 
     if (!step1.psuEmail.trim()) {
-      next.psuEmail = "PSU email is required.";
+      next.psuEmail = t.step1.psuEmailRequired;
     } else if (!/^[^\s@]+@psu\.edu$/i.test(step1.psuEmail.trim())) {
-      next.psuEmail = "Email must end in @psu.edu.";
+      next.psuEmail = t.step1.psuEmailDomain;
     }
 
     if (!step1.phone.trim()) {
-      next.phone = "Phone number is required.";
+      next.phone = t.step1.phoneRequired;
     } else if (
       !isValidPhoneNumber(`+${getCountryCallingCode(phoneCountry)}${step1.phone}`)
     ) {
-      next.phone = "Please enter a valid phone number.";
+      next.phone = t.step1.phoneInvalid;
     }
 
     if (!step1.year) {
-      next.year = "Please select your year.";
+      next.year = t.step1.yearRequired;
     }
 
     setErrors(next);
@@ -297,28 +572,28 @@ export default function MembershipForm() {
       step2.gender.selected === "Other" &&
       !step2.gender.otherText.trim()
     ) {
-      next.gender = "Please specify your gender.";
+      next.gender = t.step2.genderOther;
     }
 
     if (
       step2.religion.selected.includes("Other") &&
       !step2.religion.otherText.trim()
     ) {
-      next.religion = "Please specify your religion.";
+      next.religion = t.step2.religionOther;
     }
 
     if (
       step2.identity.selected.includes("Other") &&
       !step2.identity.otherText.trim()
     ) {
-      next.identity = "Please specify your identity.";
+      next.identity = t.step2.identityOther;
     }
 
     if (
       step2.generation.selected === "Other" &&
       !step2.generation.otherText.trim()
     ) {
-      next.generation = "Please specify your generation.";
+      next.generation = t.step2.generationOther;
     }
 
     setErrors(next);
@@ -376,15 +651,13 @@ export default function MembershipForm() {
         if (data.clientSecret) {
           setClientSecret(data.clientSecret);
         } else {
-          setSubmitError(data.error ?? "Failed to initialize payment");
+          setSubmitError(data.error ?? t.step3.genericError);
         }
       })
-      .catch(() =>
-        setSubmitError("Failed to initialize payment. Please try again.")
-      )
+      .catch(() => setSubmitError(t.step3.genericError))
       .finally(() => setPiLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, clientSecret, step1, step2]);
-
 
   return (
     <div
@@ -414,7 +687,7 @@ export default function MembershipForm() {
                 )}
               </div>
               <span className="text-xs text-sasa-neutral-500">
-                {["Personal Info", "Demographics", "Payment"][idx]}
+                {t.stepIndicator[idx]}
               </span>
             </div>
 
@@ -432,27 +705,21 @@ export default function MembershipForm() {
       {/* Step 1 */}
       {step === 1 && (
         <div>
-          <div className="mb-6 rounded-lg border border-sasa-gold-600/30 bg-sasa-gold-400/10 p-4">
-            <p className="text-sm leading-relaxed text-sasa-neutral-500">
-              Thank you for your interest in joining our community of Desi students here at Penn State. 😊
-              <br />
-              <br />
-              <strong>Benefits of membership include:</strong>
-              <br />• Free & discounted cultural & social events
-              <br />• Free food & perks (Holi t-shirt, goodie bags, etc.) at specific events
-              <br />• Priority tickets to social events & partner org events
-              <br />• Access to GroupMe to get latest news/connect with others
-              <br />• Eligible to apply for freshman liaison/vacant admin board positions
-              <br />
-              <br />
-              We are so excited to meet and get to know each and everyone of you this year!
-            </p>
+          <div className="mb-6 rounded-lg border border-sasa-gold-600/30 bg-sasa-gold-400/10 p-4 text-sm leading-relaxed text-sasa-neutral-500">
+            <PortableText
+              value={
+                t.step1.intro && t.step1.intro.length > 0
+                  ? (t.step1.intro as PortableTextBlock[])
+                  : FALLBACK_INTRO_BLOCKS
+              }
+              components={PT_COMPONENTS}
+            />
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                First Name <span className="text-red-500">*</span>
+                {t.step1.firstName} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -469,7 +736,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                Last Name <span className="text-red-500">*</span>
+                {t.step1.lastName} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -486,7 +753,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                PSU Email <span className="text-red-500">*</span>
+                {t.step1.psuEmail} <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
@@ -503,7 +770,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                Phone Number <span className="text-red-500">*</span>
+                {t.step1.phone} <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 <div className="relative" ref={countryDropdownRef}>
@@ -630,29 +897,30 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Year <span className="text-red-500">*</span>
+                {t.step1.year} <span className="text-red-500">*</span>
               </label>
               <div className="space-y-2">
-                {["Freshman", "Sophomore", "Junior", "Senior", "Grad Student"].map(
-                  (y) => (
-                    <label key={y} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="year"
-                        value={y}
-                        checked={step1.year === y}
-                        onChange={(e) =>
-                          setStep1((p) => ({
-                            ...p,
-                            year: e.target.value as Step1["year"],
-                          }))
-                        }
-                        className="accent-sasa-red-900"
-                      />
-                      <span className="text-sm">{y}</span>
-                    </label>
-                  )
-                )}
+                {options.year.map((y) => (
+                  <label
+                    key={y}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="year"
+                      value={y}
+                      checked={step1.year === y}
+                      onChange={(e) =>
+                        setStep1((p) => ({
+                          ...p,
+                          year: e.target.value,
+                        }))
+                      }
+                      className="accent-sasa-red-900"
+                    />
+                    <span className="text-sm">{y}</span>
+                  </label>
+                ))}
               </div>
               {errors.year && (
                 <p className="mt-1 text-xs text-red-500">{errors.year}</p>
@@ -665,7 +933,7 @@ export default function MembershipForm() {
               onClick={goToStep2}
               className="rounded bg-sasa-red-900 px-6 py-2 text-sm font-semibold text-white hover:bg-sasa-red-700 transition-colors"
             >
-              Next →
+              {t.step1.nextLabel}
             </button>
           </div>
         </div>
@@ -676,17 +944,15 @@ export default function MembershipForm() {
         <div>
           <div className="mb-6">
             <h2 className="font-heading text-lg font-semibold text-sasa-red-900 mb-2">
-              Demographic Information
+              {t.step2.heading}
             </h2>
-            <p className="text-sm text-sasa-neutral-500">
-              These questions are optional but we recommend you fill out so we are able to get to know you and have information about our membership when planning events
-            </p>
+            <p className="text-sm text-sasa-neutral-500">{t.step2.intro}</p>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                What are you studying/what is your major?
+                {t.step2.major}
               </label>
               <input
                 type="text"
@@ -696,14 +962,11 @@ export default function MembershipForm() {
                 }
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
               />
-              {errors.major && (
-                <p className="mt-1 text-xs text-red-500">{errors.major}</p>
-              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                Where is your hometown?
+                {t.step2.hometown}
               </label>
               <input
                 type="text"
@@ -713,17 +976,14 @@ export default function MembershipForm() {
                 }
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
               />
-              {errors.hometown && (
-                <p className="mt-1 text-xs text-red-500">{errors.hometown}</p>
-              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Gender
+                {t.step2.gender}
               </label>
               <div className="space-y-2">
-                {["Male", "Female", "Other"].map((g) => (
+                {options.gender.map((g) => (
                   <label key={g} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -739,23 +999,39 @@ export default function MembershipForm() {
                       className="accent-sasa-red-900"
                     />
                     <span className="text-sm">{g}</span>
-                    {g === "Other" && step2.gender.selected === "Other" && (
-                      <input
-                        type="text"
-                        value={step2.gender.otherText}
-                        onChange={(e) =>
-                          setStep2((p) => ({
-                            ...p,
-                            gender: { selected: "Other", otherText: e.target.value },
-                          }))
-                        }
-                        placeholder="Please specify"
-                        className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-sasa-red-900 focus:outline-none"
-                        autoFocus
-                      />
-                    )}
                   </label>
                 ))}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="gender"
+                    value="Other"
+                    checked={step2.gender.selected === "Other"}
+                    onChange={() =>
+                      setStep2((p) => ({
+                        ...p,
+                        gender: { selected: "Other", otherText: "" },
+                      }))
+                    }
+                    className="accent-sasa-red-900"
+                  />
+                  <span className="text-sm">{t.step2.otherLabel}</span>
+                  {step2.gender.selected === "Other" && (
+                    <input
+                      type="text"
+                      value={step2.gender.otherText}
+                      onChange={(e) =>
+                        setStep2((p) => ({
+                          ...p,
+                          gender: { selected: "Other", otherText: e.target.value },
+                        }))
+                      }
+                      placeholder={t.step2.otherSpecify}
+                      className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-sasa-red-900 focus:outline-none"
+                      autoFocus
+                    />
+                  )}
+                </label>
               </div>
               {errors.gender && (
                 <p className="mt-1 text-xs text-red-500">{errors.gender}</p>
@@ -764,10 +1040,10 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                What religion do you identify with?
+                {t.step2.religion}
               </label>
               <div className="space-y-2">
-                {RELIGION_OPTIONS.map((r) => (
+                {options.religion.map((r) => (
                   <label key={r} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -806,7 +1082,7 @@ export default function MembershipForm() {
                     }}
                     className="accent-sasa-red-900"
                   />
-                  <span className="text-sm">Other:</span>
+                  <span className="text-sm">{t.step2.otherLabel}:</span>
                   {step2.religion.selected.includes("Other") && (
                     <input
                       type="text"
@@ -817,7 +1093,7 @@ export default function MembershipForm() {
                           religion: { ...p.religion, otherText: e.target.value },
                         }))
                       }
-                      placeholder="Please specify"
+                      placeholder={t.step2.otherSpecify}
                       className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-sasa-red-900 focus:outline-none"
                       autoFocus
                     />
@@ -831,10 +1107,10 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Which of the following identities do you identify with?
+                {t.step2.identity}
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {IDENTITY_OPTIONS.map((id) => (
+                {options.identity.map((id) => (
                   <label key={id} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -873,7 +1149,7 @@ export default function MembershipForm() {
                     }}
                     className="accent-sasa-red-900"
                   />
-                  <span className="text-sm">Other:</span>
+                  <span className="text-sm">{t.step2.otherLabel}:</span>
                   {step2.identity.selected.includes("Other") && (
                     <input
                       type="text"
@@ -884,7 +1160,7 @@ export default function MembershipForm() {
                           identity: { ...p.identity, otherText: e.target.value },
                         }))
                       }
-                      placeholder="Please specify"
+                      placeholder={t.step2.otherSpecify}
                       className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-sasa-red-900 focus:outline-none"
                       autoFocus
                     />
@@ -898,10 +1174,10 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-2">
-                Which generation do you identify with?
+                {t.step2.generation}
               </label>
               <div className="space-y-2">
-                {GENERATION_OPTIONS.map((g) => (
+                {options.generation.map((g) => (
                   <label key={g} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -933,7 +1209,7 @@ export default function MembershipForm() {
                     }
                     className="accent-sasa-red-900"
                   />
-                  <span className="text-sm">Other:</span>
+                  <span className="text-sm">{t.step2.otherLabel}:</span>
                   {step2.generation.selected === "Other" && (
                     <input
                       type="text"
@@ -944,7 +1220,7 @@ export default function MembershipForm() {
                           generation: { selected: "Other", otherText: e.target.value },
                         }))
                       }
-                      placeholder="Please specify"
+                      placeholder={t.step2.otherSpecify}
                       className="ml-2 rounded border border-gray-300 px-2 py-0.5 text-sm focus:border-sasa-red-900 focus:outline-none"
                       autoFocus
                     />
@@ -958,7 +1234,7 @@ export default function MembershipForm() {
 
             <div>
               <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                What is your Instagram handle?
+                {t.step2.instagram}
               </label>
               <input
                 type="text"
@@ -966,12 +1242,9 @@ export default function MembershipForm() {
                 onChange={(e) =>
                   setStep2((p) => ({ ...p, instagram: e.target.value }))
                 }
-                placeholder="@yourhandle"
+                placeholder={t.step2.instagramPh}
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
               />
-              {errors.instagram && (
-                <p className="mt-1 text-xs text-red-500">{errors.instagram}</p>
-              )}
             </div>
           </div>
 
@@ -980,13 +1253,13 @@ export default function MembershipForm() {
               onClick={goBack}
               className="rounded border-2 border-sasa-gold-400 px-6 py-2 text-sm font-semibold text-sasa-gold-400 hover:bg-sasa-gold-400/10 transition-colors"
             >
-              ← Back
+              {t.step2.backLabel}
             </button>
             <button
               onClick={goToStep3}
               className="rounded bg-sasa-red-900 px-6 py-2 text-sm font-semibold text-white hover:bg-sasa-red-700 transition-colors"
             >
-              Next →
+              {t.step2.nextLabel}
             </button>
           </div>
         </div>
@@ -996,13 +1269,15 @@ export default function MembershipForm() {
       {step === 3 && (
         <div>
           <div className="mb-6 rounded-lg bg-gray-50 border border-gray-200 p-4">
-            <p className="text-sm text-sasa-neutral-500 mb-1">Order Summary</p>
+            <p className="text-sm text-sasa-neutral-500 mb-1">
+              {t.step3.summaryHeading}
+            </p>
             <div className="flex justify-between items-baseline">
               <span className="text-base font-semibold text-sasa-red-900">
-                SASA Membership
+                {t.step3.productName}
               </span>
               <span className="text-2xl font-bold text-sasa-gold-600">
-                $0.50
+                {priceDisplay}
               </span>
             </div>
           </div>
@@ -1015,7 +1290,7 @@ export default function MembershipForm() {
 
           {piLoading && (
             <p className="text-sm text-sasa-neutral-500 mb-4">
-              Loading payment form...
+              {t.step3.loadingPaymentText}
             </p>
           )}
 
@@ -1027,7 +1302,10 @@ export default function MembershipForm() {
                 appearance: { theme: "stripe" },
               }}
             >
-              <CheckoutForm />
+              <CheckoutForm
+                submitLabel={t.step3.submitLabel}
+                processingLabel={t.step3.processingLabel}
+              />
             </Elements>
           )}
 
@@ -1037,7 +1315,7 @@ export default function MembershipForm() {
               disabled={piLoading}
               className="rounded border-2 border-sasa-gold-400 px-6 py-2 text-sm font-semibold text-sasa-gold-400 hover:bg-sasa-gold-400/10 disabled:opacity-60 transition-colors"
             >
-              ← Back
+              {t.step3.backLabel}
             </button>
           </div>
         </div>
@@ -1046,7 +1324,12 @@ export default function MembershipForm() {
   );
 }
 
-function CheckoutForm() {
+interface CheckoutFormProps {
+  submitLabel: string;
+  processingLabel: string;
+}
+
+function CheckoutForm({ submitLabel, processingLabel }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [isLoading, setIsLoading] = useState(false);
@@ -1081,7 +1364,7 @@ function CheckoutForm() {
         disabled={!stripe || isLoading}
         className="mt-6 w-full rounded bg-sasa-red-900 px-6 py-3 text-sm font-semibold text-white hover:bg-sasa-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
       >
-        {isLoading ? "Processing..." : "Become a Member!"}
+        {isLoading ? processingLabel : submitLabel}
       </button>
     </form>
   );

@@ -4,8 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import type { NavItem } from "../../../sanity/lib/types";
 
-const navLinks = [
+const FALLBACK_NAV: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/events", label: "Events" },
@@ -14,9 +15,16 @@ const navLinks = [
   { href: "/join", label: "Join" },
 ];
 
-export default function Navbar() {
+interface NavbarProps {
+  navItems?: NavItem[] | null;
+}
+
+export default function Navbar({ navItems }: NavbarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const links: NavItem[] =
+    navItems && navItems.length > 0 ? navItems : FALLBACK_NAV;
 
   return (
     <header className="sticky top-0 z-50 bg-sasa-red-900 shadow-lg">
@@ -34,22 +42,23 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <ul className="hidden items-center gap-1 md:flex">
-          {navLinks.map((link) => {
+          {links.map((link) => {
+            const href = link.href ?? "#";
             const isActive =
-              link.href === "/"
+              href === "/"
                 ? pathname === "/"
-                : pathname.startsWith(link.href);
+                : pathname.startsWith(href);
             return (
-              <li key={link.href}>
+              <li key={href}>
                 <Link
-                  href={link.href}
+                  href={href}
                   className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
                       ? "text-sasa-gold-400 underline underline-offset-4 decoration-sasa-gold-400"
                       : "text-sasa-gold-400/80 hover:text-sasa-gold-400 hover:bg-sasa-red-700/30"
                   }`}
                 >
-                  {link.label}
+                  {link.label ?? ""}
                 </Link>
               </li>
             );
@@ -78,15 +87,16 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="border-t border-sasa-red-700/50 md:hidden">
           <ul className="space-y-1 px-4 pb-4 pt-2">
-            {navLinks.map((link) => {
+            {links.map((link) => {
+              const href = link.href ?? "#";
               const isActive =
-                link.href === "/"
+                href === "/"
                   ? pathname === "/"
-                  : pathname.startsWith(link.href);
+                  : pathname.startsWith(href);
               return (
-                <li key={link.href}>
+                <li key={href}>
                   <Link
-                    href={link.href}
+                    href={href}
                     onClick={() => setMobileOpen(false)}
                     className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       isActive
@@ -94,7 +104,7 @@ export default function Navbar() {
                         : "text-sasa-gold-400/80 hover:bg-sasa-red-700/20 hover:text-sasa-gold-400"
                     }`}
                   >
-                    {link.label}
+                    {link.label ?? ""}
                   </Link>
                 </li>
               );

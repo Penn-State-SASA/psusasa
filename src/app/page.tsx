@@ -1,5 +1,10 @@
-import { sanityFetch } from "../../sanity/lib/client";
-import { featuredEventsQuery } from "../../sanity/lib/queries";
+import { sanityFetch, sanityFetchSingle } from "../../sanity/lib/client";
+import {
+  featuredEventsQuery,
+  homePageQuery,
+  siteSettingsQuery,
+} from "../../sanity/lib/queries";
+import type { HomePageCopy, SiteSettings } from "../../sanity/lib/types";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import Hero from "@/components/home/Hero";
@@ -11,19 +16,27 @@ import type { SanityEvent } from "@/lib/types";
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const events = await sanityFetch<SanityEvent>(featuredEventsQuery);
+  const [events, copy, settings] = await Promise.all([
+    sanityFetch<SanityEvent>(featuredEventsQuery),
+    sanityFetchSingle<HomePageCopy>(homePageQuery),
+    sanityFetchSingle<SiteSettings>(siteSettingsQuery),
+  ]);
 
   return (
     <>
-      <Navbar />
+      <Navbar navItems={settings?.navItems} />
       <main>
-        <Hero />
-        <MissionSection />
+        <Hero copy={copy?.hero} />
+        <MissionSection copy={copy?.mission} />
         <div className="section-divider-mandala" />
-        <UpcomingEvents events={events} />
-        <JoinCTA />
+        <UpcomingEvents events={events} copy={copy?.upcomingEvents} />
+        <JoinCTA copy={copy?.joinCta} />
       </main>
-      <Footer />
+      <Footer
+        footer={settings?.footer}
+        contact={settings?.contact}
+        quickLinks={settings?.navItems}
+      />
     </>
   );
 }
