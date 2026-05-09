@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
 import { appendMemberToAirtable } from "@/lib/airtable";
+import { addMemberToGroupMe } from "@/lib/groupme";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,13 @@ export async function POST(req: NextRequest) {
 
       if (paymentIntent.metadata) {
         await appendMemberToAirtable(paymentIntent.metadata, paymentIntent.id);
+        // GroupMe failure must not block the 200 response — it self-handles
+        // errors by emailing the admin.
+        try {
+          await addMemberToGroupMe(paymentIntent.metadata, paymentIntent.id);
+        } catch (err) {
+          console.error("GroupMe add threw unexpectedly:", err);
+        }
       }
     }
 
