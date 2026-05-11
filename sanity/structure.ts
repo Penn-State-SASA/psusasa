@@ -5,7 +5,7 @@ const SINGLETONS: ReadonlyArray<readonly [schemaType: string, title: string]> = 
   ["homePage", "Home Page"],
   ["aboutPage", "About Page"],
   ["joinPage", "Join Page"],
-  ["membershipFormCopy", "Membership Form Copy"],
+  ["membershipFormCopy", "Membership Form"],
 ];
 
 export const SINGLETON_TYPES = new Set(SINGLETONS.map(([type]) => type));

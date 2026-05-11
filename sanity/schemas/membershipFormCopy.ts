@@ -127,7 +127,7 @@ const FALLBACK_INTRO_BLOCKS = [
 
 export default defineType({
   name: "membershipFormCopy",
-  title: "Membership Form Copy",
+  title: "Membership Form",
   type: "document",
   fields: [
     defineField({
@@ -329,6 +329,6 @@ export default defineType({
     }),
   ],
   preview: {
-    prepare: () => ({ title: "Membership Form Copy" }),
+    prepare: () => ({ title: "Membership Form" }),
   },
 });
