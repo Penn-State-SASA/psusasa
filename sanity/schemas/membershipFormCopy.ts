@@ -320,6 +320,12 @@ export default defineType({
         { name: "submitLabel", type: "string", initialValue: "Become a Member!" },
         { name: "processingLabel", type: "string", initialValue: "Processing..." },
         {
+          name: "incompletePaymentHint",
+          title: "Hint shown while payment fields are incomplete",
+          type: "string",
+          initialValue: "Please complete your payment details to continue.",
+        },
+        {
           name: "genericError",
           type: "string",
           initialValue: "Failed to initialize payment. Please try again.",
