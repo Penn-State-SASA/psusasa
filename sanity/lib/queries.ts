@@ -57,6 +57,7 @@ export const membershipFormCopyQuery = `*[_id == "membershipFormCopy"][0] {
   step3{
     summaryHeading, productName,
     loadingPaymentText, submitLabel, processingLabel,
+    incompletePaymentHint,
     genericError, backLabel
   }
 }`;

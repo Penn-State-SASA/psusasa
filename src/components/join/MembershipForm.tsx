@@ -526,6 +526,9 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
           s3?.loadingPaymentText ?? "Loading payment form...",
         submitLabel: s3?.submitLabel ?? "Become a Member!",
         processingLabel: s3?.processingLabel ?? "Processing...",
+        incompletePaymentHint:
+          s3?.incompletePaymentHint ??
+          "Please complete your payment details to continue.",
         genericError:
           s3?.genericError ??
           "Failed to initialize payment. Please try again.",
@@ -1305,6 +1308,7 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
               <CheckoutForm
                 submitLabel={t.step3.submitLabel}
                 processingLabel={t.step3.processingLabel}
+                incompletePaymentHint={t.step3.incompletePaymentHint}
               />
             </Elements>
           )}
@@ -1327,12 +1331,18 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
 interface CheckoutFormProps {
   submitLabel: string;
   processingLabel: string;
+  incompletePaymentHint: string;
 }
 
-function CheckoutForm({ submitLabel, processingLabel }: CheckoutFormProps) {
+function CheckoutForm({
+  submitLabel,
+  processingLabel,
+  incompletePaymentHint,
+}: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [isLoading, setIsLoading] = useState(false);
+  const [isPaymentComplete, setIsPaymentComplete] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -1357,11 +1367,18 @@ function CheckoutForm({ submitLabel, processingLabel }: CheckoutFormProps) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <PaymentElement />
+      <PaymentElement
+        onChange={(event) => setIsPaymentComplete(event.complete)}
+      />
+      {!isPaymentComplete && (
+        <p className="mt-3 text-sm text-sasa-neutral-500">
+          {incompletePaymentHint}
+        </p>
+      )}
       {errorMsg && <p className="mt-3 text-sm text-red-600">{errorMsg}</p>}
       <button
         type="submit"
-        disabled={!stripe || isLoading}
+        disabled={!stripe || isLoading || !isPaymentComplete}
         className="mt-6 w-full rounded bg-sasa-red-900 px-6 py-3 text-sm font-semibold text-white hover:bg-sasa-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? processingLabel : submitLabel}

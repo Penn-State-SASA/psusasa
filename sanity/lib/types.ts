@@ -174,6 +174,7 @@ export interface MembershipFormCopy {
     loadingPaymentText?: string;
     submitLabel?: string;
     processingLabel?: string;
+    incompletePaymentHint?: string;
     genericError?: string;
     backLabel?: string;
   };
