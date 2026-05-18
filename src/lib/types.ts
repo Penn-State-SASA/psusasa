@@ -17,7 +17,7 @@ export interface SanityImageSource {
 export interface SanityEventCategory {
   _id: string;
   name: string;
-  color: { hex: string };
+  color: string;
 }
 
 export interface SanityEvent {

@@ -13,12 +13,17 @@ export default defineType({
     }),
     defineField({
       name: "color",
-      title: "Badge Color",
-      type: "color",
-      validation: (Rule) => Rule.required(),
+      title: "Badge Color (hex)",
+      type: "string",
+      description: 'Enter a hex color value, e.g. #e63946',
+      validation: (Rule) =>
+        Rule.required().regex(/^#[0-9A-Fa-f]{6}$/, {
+          name: "hex color",
+          invert: false,
+        }),
     }),
   ],
   preview: {
-    select: { title: "name" },
+    select: { title: "name", subtitle: "color" },
   },
 });

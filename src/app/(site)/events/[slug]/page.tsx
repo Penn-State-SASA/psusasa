@@ -108,8 +108,8 @@ export default async function EventDetailPage({ params }: EventPageProps) {
             <span
               className="inline-block rounded-full px-4 py-1 text-sm font-semibold"
               style={{
-                backgroundColor: event.category.color.hex,
-                color: getTextColor(event.category.color.hex),
+                backgroundColor: event.category.color,
+                color: getTextColor(event.category.color),
               }}
             >
               {event.category.name}

@@ -49,8 +49,8 @@ export default function EventCard({ event }: EventCardProps) {
           <span
             className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold"
             style={{
-              backgroundColor: event.category.color.hex,
-              color: getTextColor(event.category.color.hex),
+              backgroundColor: event.category.color,
+              color: getTextColor(event.category.color),
             }}
           >
             {event.category.name}
