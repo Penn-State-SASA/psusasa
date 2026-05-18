@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@portabletext/react": "^6.0.3",
+    "@sanity/color-input": "^3.4.0",
     "@sanity/image-url": "^2.1.1",
     "@stripe/react-stripe-js": "^6.3.0",
     "@stripe/stripe-js": "^9.4.0",
