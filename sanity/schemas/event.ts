@@ -39,16 +39,8 @@ export default defineType({
     defineField({
       name: "category",
       title: "Category",
-      type: "string",
-      options: {
-        list: [
-          { title: "Cultural Show", value: "Cultural Show" },
-          { title: "Festival", value: "Festival" },
-          { title: "Social", value: "Social" },
-          { title: "THON", value: "THON" },
-          { title: "Community Service", value: "Community Service" },
-        ],
-      },
+      type: "reference",
+      to: [{ type: "eventCategory" }],
     }),
     defineField({
       name: "isFeatured",

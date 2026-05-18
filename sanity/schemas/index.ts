@@ -1,4 +1,5 @@
 import event from "./event";
+import eventCategory from "./eventCategory";
 import officer from "./officer";
 import galleryImage from "./galleryImage";
 import announcement from "./announcement";
@@ -10,6 +11,7 @@ import membershipFormCopy from "./membershipFormCopy";
 
 export const schemaTypes = [
   event,
+  eventCategory,
   officer,
   galleryImage,
   announcement,

@@ -24,6 +24,7 @@ export const structure = (S: StructureBuilder) =>
       ),
       S.divider(),
       S.documentTypeListItem("event").title("Events"),
+      S.documentTypeListItem("eventCategory").title("Event Categories"),
       S.documentTypeListItem("officer").title("Officers"),
       S.documentTypeListItem("galleryImage").title("Gallery"),
       S.documentTypeListItem("announcement").title("Announcements"),

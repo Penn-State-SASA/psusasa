@@ -3,10 +3,11 @@ import { sanityFetch } from "../../../../sanity/lib/client";
 import {
   upcomingEventsQuery,
   pastEventsQuery,
+  categoriesQuery,
 } from "../../../../sanity/lib/queries";
 import SectionHeading from "@/components/shared/SectionHeading";
 import EventsPageClient from "./EventsPageClient";
-import type { SanityEvent } from "@/lib/types";
+import type { SanityEvent, SanityEventCategory } from "@/lib/types";
 
 export const metadata: Metadata = {
   title: "Events | SASA at Penn State",
@@ -17,9 +18,10 @@ export const metadata: Metadata = {
 export const revalidate = 60;
 
 export default async function EventsPage() {
-  const [upcoming, past] = await Promise.all([
+  const [upcoming, past, categories] = await Promise.all([
     sanityFetch<SanityEvent>(upcomingEventsQuery),
     sanityFetch<SanityEvent>(pastEventsQuery),
+    sanityFetch<SanityEventCategory>(categoriesQuery),
   ]);
 
   return (
@@ -59,7 +61,11 @@ export default async function EventsPage() {
               </p>
             </div>
           ) : (
-            <EventsPageClient upcoming={upcoming} past={past} />
+            <EventsPageClient
+              upcoming={upcoming}
+              past={past}
+              categories={categories}
+            />
           )}
         </div>
       </section>

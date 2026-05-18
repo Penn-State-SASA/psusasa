@@ -3,30 +3,36 @@
 import { useState } from "react";
 import CategoryFilter from "@/components/events/CategoryFilter";
 import EventGrid from "@/components/events/EventGrid";
-import type { SanityEvent } from "@/lib/types";
+import type { SanityEvent, SanityEventCategory } from "@/lib/types";
 
 interface EventsPageClientProps {
   upcoming: SanityEvent[];
   past: SanityEvent[];
+  categories: SanityEventCategory[];
 }
 
 export default function EventsPageClient({
   upcoming,
   past,
+  categories,
 }: EventsPageClientProps) {
   const [category, setCategory] = useState("All");
 
   const filterEvents = (events: SanityEvent[]) =>
     category === "All"
       ? events
-      : events.filter((e) => e.category === category);
+      : events.filter((e) => e.category?._id === category);
 
   const filteredUpcoming = filterEvents(upcoming);
   const filteredPast = filterEvents(past);
 
   return (
     <div className="space-y-12">
-      <CategoryFilter selected={category} onChange={setCategory} />
+      <CategoryFilter
+        categories={categories}
+        selected={category}
+        onChange={setCategory}
+      />
 
       {filteredUpcoming.length > 0 && (
         <EventGrid events={filteredUpcoming} title="Upcoming Events" />

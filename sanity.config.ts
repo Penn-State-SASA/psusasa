@@ -1,5 +1,6 @@
 import { defineConfig } from "sanity";
 import { structureTool } from "sanity/structure";
+import { colorInput } from "@sanity/color-input";
 import { schemaTypes } from "./sanity/schemas";
 import { structure, SINGLETON_TYPES } from "./sanity/structure";
 
@@ -11,7 +12,7 @@ export default defineConfig({
   title: "SASA Content Studio",
   projectId,
   dataset,
-  plugins: [structureTool({ structure })],
+  plugins: [structureTool({ structure }), colorInput()],
   schema: {
     types: schemaTypes,
   },

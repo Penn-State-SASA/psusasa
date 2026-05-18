@@ -53,13 +53,13 @@ export default async function EventDetailPage({ params }: EventPageProps) {
     minute: "2-digit",
   });
 
-  const categoryColors: Record<string, string> = {
-    "Cultural Show": "bg-sasa-red-600 text-white",
-    Festival: "bg-sasa-gold-600 text-sasa-red-900",
-    Social: "bg-sasa-forest text-white",
-    THON: "bg-sasa-red-500 text-white",
-    "Community Service": "bg-sasa-sage text-sasa-red-900",
-  };
+  function getTextColor(hex: string): string {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    return luminance > 0.5 ? "#1a1a1a" : "#ffffff";
+  }
 
   return (
     <div>
@@ -106,11 +106,13 @@ export default async function EventDetailPage({ params }: EventPageProps) {
           {/* Category badge */}
           {event.category && (
             <span
-              className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${
-                categoryColors[event.category] || "bg-gray-200 text-gray-700"
-              }`}
+              className="inline-block rounded-full px-4 py-1 text-sm font-semibold"
+              style={{
+                backgroundColor: event.category.color.hex,
+                color: getTextColor(event.category.color.hex),
+              }}
             >
-              {event.category}
+              {event.category.name}
             </span>
           )}
 
