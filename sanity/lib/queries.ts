@@ -14,7 +14,7 @@ export const featuredEventsQuery = `*[_type == "event" && isFeatured == true && 
 }`;
 
 export const allEventsQuery = `*[_type == "event"] | order(date desc) {
-  _id, title, slug, date, description, coverImage, isFeatured,
+  _id, _updatedAt, title, slug, date, description, coverImage, isFeatured,
   "category": category->{ _id, name, color }
 }`;
 

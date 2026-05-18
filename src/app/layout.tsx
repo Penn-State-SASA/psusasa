@@ -15,9 +15,38 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SASA | Penn State South Asian Student Association",
+  metadataBase: new URL("https://psusasa.com"),
+  title: {
+    default: "SASA | Penn State South Asian Student Association",
+    template: "%s | SASA at Penn State",
+  },
   description:
     "Fostering an environment at Penn State that allows students of South Asian heritage to share and promote their culture. Celebrating South Asian Heritage in Happy Valley since 1960.",
+  openGraph: {
+    title: "SASA | Penn State South Asian Student Association",
+    description:
+      "Fostering an environment at Penn State that allows students of South Asian heritage to share and promote their culture. Celebrating South Asian Heritage in Happy Valley since 1960.",
+    url: "https://psusasa.com",
+    siteName: "Penn State SASA",
+    locale: "en_US",
+    type: "website",
+    images: [
+      {
+        url: "/sasa-logo.png",
+        alt: "Penn State SASA logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SASA | Penn State South Asian Student Association",
+    description:
+      "Celebrating South Asian Heritage in Happy Valley since 1960.",
+    images: ["/sasa-logo.png"],
+  },
+  alternates: {
+    canonical: "https://psusasa.com",
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
