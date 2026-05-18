@@ -7,13 +7,13 @@ interface EventCardProps {
   event: SanityEvent;
 }
 
-const categoryColors: Record<string, string> = {
-  "Cultural Show": "bg-sasa-red-600 text-white",
-  Festival: "bg-sasa-gold-600 text-sasa-red-900",
-  Social: "bg-sasa-forest text-white",
-  THON: "bg-sasa-red-500 text-white",
-  "Community Service": "bg-sasa-sage text-sasa-red-900",
-};
+function getTextColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return luminance > 0.5 ? "#1a1a1a" : "#ffffff";
+}
 
 export default function EventCard({ event }: EventCardProps) {
   const formattedDate = new Date(event.date).toLocaleDateString("en-US", {
@@ -47,11 +47,13 @@ export default function EventCard({ event }: EventCardProps) {
         {/* Category badge */}
         {event.category && (
           <span
-            className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold ${
-              categoryColors[event.category] || "bg-gray-200 text-gray-700"
-            }`}
+            className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold"
+            style={{
+              backgroundColor: event.category.color,
+              color: getTextColor(event.category.color),
+            }}
           >
-            {event.category}
+            {event.category.name}
           </span>
         )}
       </div>

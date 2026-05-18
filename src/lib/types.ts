@@ -14,6 +14,12 @@ export interface SanityImageSource {
   };
 }
 
+export interface SanityEventCategory {
+  _id: string;
+  name: string;
+  color: string;
+}
+
 export interface SanityEvent {
   _id: string;
   title: string;
@@ -21,12 +27,7 @@ export interface SanityEvent {
   date: string;
   description: string;
   coverImage: SanityImageSource;
-  category:
-    | "Cultural Show"
-    | "Festival"
-    | "Social"
-    | "THON"
-    | "Community Service";
+  category: SanityEventCategory | null;
   isFeatured: boolean;
 }
 

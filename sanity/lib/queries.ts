@@ -1,21 +1,30 @@
 export const upcomingEventsQuery = `*[_type == "event" && date >= now()] | order(date asc) {
-  _id, title, slug, date, description, coverImage, category, isFeatured
+  _id, title, slug, date, description, coverImage, isFeatured,
+  "category": category->{ _id, name, color }
 }`;
 
 export const pastEventsQuery = `*[_type == "event" && date < now()] | order(date desc) {
-  _id, title, slug, date, description, coverImage, category, isFeatured
+  _id, title, slug, date, description, coverImage, isFeatured,
+  "category": category->{ _id, name, color }
 }`;
 
 export const featuredEventsQuery = `*[_type == "event" && isFeatured == true && date >= now()] | order(date asc)[0...3] {
-  _id, title, slug, date, description, coverImage, category
+  _id, title, slug, date, description, coverImage,
+  "category": category->{ _id, name, color }
 }`;
 
 export const allEventsQuery = `*[_type == "event"] | order(date desc) {
-  _id, title, slug, date, description, coverImage, category, isFeatured
+  _id, title, slug, date, description, coverImage, isFeatured,
+  "category": category->{ _id, name, color }
 }`;
 
 export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0] {
-  _id, title, slug, date, description, coverImage, category, isFeatured
+  _id, title, slug, date, description, coverImage, isFeatured,
+  "category": category->{ _id, name, color }
+}`;
+
+export const categoriesQuery = `*[_type == "eventCategory"] | order(name asc) {
+  _id, name, color
 }`;
 
 export const officersQuery = `*[_type == "officer"] | order(order asc) {
