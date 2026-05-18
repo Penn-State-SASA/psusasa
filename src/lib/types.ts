@@ -22,6 +22,7 @@ export interface SanityEventCategory {
 
 export interface SanityEvent {
   _id: string;
+  _updatedAt?: string;
   title: string;
   slug: { current: string };
   date: string;

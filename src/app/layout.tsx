@@ -30,12 +30,19 @@ export const metadata: Metadata = {
     siteName: "Penn State SASA",
     locale: "en_US",
     type: "website",
+    images: [
+      {
+        url: "/sasa-logo.png",
+        alt: "Penn State SASA logo",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "SASA | Penn State South Asian Student Association",
     description:
       "Celebrating South Asian Heritage in Happy Valley since 1960.",
+    images: ["/sasa-logo.png"],
   },
   alternates: {
     canonical: "https://psusasa.com",
