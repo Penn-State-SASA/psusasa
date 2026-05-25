@@ -117,6 +117,18 @@ export interface JoinPageCopy {
   social?: { heading?: string; buttons?: SocialButton[] };
 }
 
+export interface CtaButton {
+  label?: string;
+  href?: string;
+}
+
+export interface NotFoundPageCopy {
+  hero?: SimpleHero;
+  body?: PortableTextBlock[];
+  primaryCta?: CtaButton;
+  secondaryCta?: CtaButton;
+}
+
 export interface MembershipFormCopy {
   priceCents?: number;
   stepLabels?: { step1?: string; step2?: string; step3?: string };
