@@ -120,6 +120,13 @@ export const homePageQuery = `*[_id == "homePage"][0] {
   }
 }`;
 
+export const notFoundPageQuery = `*[_id == "notFoundPage"][0] {
+  hero{ title, subtitle },
+  body,
+  primaryCta{ label, href },
+  secondaryCta{ label, href }
+}`;
+
 export const siteSettingsQuery = `*[_id == "siteSettings"][0] {
   navItems[]{ label, href },
   footer{

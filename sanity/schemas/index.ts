@@ -8,6 +8,7 @@ import homePage from "./homePage";
 import aboutPage from "./aboutPage";
 import joinPage from "./joinPage";
 import membershipFormCopy from "./membershipFormCopy";
+import notFoundPage from "./notFoundPage";
 
 export const schemaTypes = [
   event,
@@ -20,4 +21,5 @@ export const schemaTypes = [
   aboutPage,
   joinPage,
   membershipFormCopy,
+  notFoundPage,
 ];
