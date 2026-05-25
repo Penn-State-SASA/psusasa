@@ -14,7 +14,11 @@ import type {
 } from "../../sanity/lib/types";
 import type { PortableTextBlock } from "@portabletext/types";
 
-export const revalidate = 60;
+// Next.js statically generates the root not-found page at build time and
+// reuses it for every unmatched URL, so `revalidate` doesn't fire and edits
+// in Sanity never reach the live page. force-dynamic re-renders on every
+// request so the latest Sanity content always shows.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Page Not Found",
