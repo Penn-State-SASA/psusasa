@@ -454,6 +454,87 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Live-clear any existing error the moment the field becomes valid.
+  // Only removes errors; never adds them — new errors still come from the
+  // Next-button validators.
+  useEffect(() => {
+    setErrors((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+
+      if (next.firstName && step1.firstName.trim()) {
+        delete next.firstName;
+        changed = true;
+      }
+      if (next.lastName && step1.lastName.trim()) {
+        delete next.lastName;
+        changed = true;
+      }
+      if (
+        next.psuEmail &&
+        /^[^\s@]+@psu\.edu$/i.test(step1.psuEmail.trim())
+      ) {
+        delete next.psuEmail;
+        changed = true;
+      }
+      if (
+        next.phone &&
+        step1.phone.trim() &&
+        isValidPhoneNumber(
+          `+${getCountryCallingCode(phoneCountry)}${step1.phone}`
+        )
+      ) {
+        delete next.phone;
+        changed = true;
+      }
+      if (next.year && step1.year) {
+        delete next.year;
+        changed = true;
+      }
+
+      if (
+        next.gender &&
+        !(step2.gender.selected === "Other" && !step2.gender.otherText.trim())
+      ) {
+        delete next.gender;
+        changed = true;
+      }
+      if (
+        next.religion &&
+        !(
+          step2.religion.selected.includes("Other") &&
+          !step2.religion.otherText.trim()
+        )
+      ) {
+        delete next.religion;
+        changed = true;
+      }
+      if (
+        next.identity &&
+        !(
+          step2.identity.selected.includes("Other") &&
+          !step2.identity.otherText.trim()
+        )
+      ) {
+        delete next.identity;
+        changed = true;
+      }
+      if (
+        next.generation &&
+        !(
+          step2.generation.selected === "Other" &&
+          !step2.generation.otherText.trim()
+        )
+      ) {
+        delete next.generation;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [step1, step2, phoneCountry]);
+
   // Resolved labels with fallbacks (memoized for clarity).
   const t = useMemo(() => {
     const stepLabels = copy?.stepLabels;
