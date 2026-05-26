@@ -120,6 +120,16 @@ export const homePageQuery = `*[_id == "homePage"][0] {
   }
 }`;
 
+export const membershipConfirmationQuery = `*[_id == "membershipConfirmation"][0] {
+  successState{
+    heroTitle, cardTitle, body, nextStepsHeading,
+    nextSteps[]{ text, linkLabel, linkHref },
+    ctas[]{ label, href }
+  },
+  pendingState{ heroTitle, message, retryLabel, retryHref },
+  errorState{ heroTitle, message }
+}`;
+
 export const notFoundPageQuery = `*[_id == "notFoundPage"][0] {
   hero{ title, subtitle },
   body,
