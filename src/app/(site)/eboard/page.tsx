@@ -6,9 +6,9 @@ import OfficerCard from "@/components/eboard/OfficerCard";
 import type { Officer } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "E-Board | SASA at Penn State",
+  title: "Admin Board | SASA at Penn State",
   description:
-    "Meet the Executive Board of the South Asian Student Association at Penn State.",
+    "Meet the Admin Board of the South Asian Student Association at Penn State.",
 };
 
 export const revalidate = 60;
@@ -24,7 +24,7 @@ export default async function EBoardPage() {
           <div className="hero-paisley-overlay" />
           <div className="relative z-10">
             <h1 className="font-heading text-4xl font-bold text-white sm:text-5xl">
-              Executive <span className="text-sasa-gold-400">Board</span>
+              Admin <span className="text-sasa-gold-400">Board</span>
             </h1>
             <p className="mt-4 text-lg text-white/80">
               Meet the leaders who make SASA happen.

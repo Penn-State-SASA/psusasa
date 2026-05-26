@@ -15,19 +15,8 @@ export default defineType({
       name: "role",
       title: "Role",
       type: "string",
+      description: "Board title displayed under the member's name (e.g. President, Events Chair, PR Director)",
       validation: (Rule) => Rule.required(),
-      options: {
-        list: [
-          { title: "President", value: "President" },
-          { title: "Vice President", value: "Vice President" },
-          { title: "Treasurer", value: "Treasurer" },
-          { title: "Secretary", value: "Secretary" },
-          { title: "Cultural Chair", value: "Cultural Chair" },
-          { title: "Events Chair", value: "Events Chair" },
-          { title: "PR Chair", value: "PR Chair" },
-          { title: "THON Chair", value: "THON Chair" },
-        ],
-      },
     }),
     defineField({
       name: "headshot",
