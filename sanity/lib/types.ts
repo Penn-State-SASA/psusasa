@@ -129,6 +129,33 @@ export interface NotFoundPageCopy {
   secondaryCta?: CtaButton;
 }
 
+export interface ConfirmationNextStep {
+  text?: string;
+  linkLabel?: string;
+  linkHref?: string;
+}
+
+export interface MembershipConfirmationCopy {
+  successState?: {
+    heroTitle?: string;
+    cardTitle?: string;
+    body?: PortableTextBlock[];
+    nextStepsHeading?: string;
+    nextSteps?: ConfirmationNextStep[];
+    ctas?: CtaButton[];
+  };
+  pendingState?: {
+    heroTitle?: string;
+    message?: string;
+    retryLabel?: string;
+    retryHref?: string;
+  };
+  errorState?: {
+    heroTitle?: string;
+    message?: PortableTextBlock[];
+  };
+}
+
 export interface MembershipFormCopy {
   priceCents?: number;
   stepLabels?: { step1?: string; step2?: string; step3?: string };
