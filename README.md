@@ -22,20 +22,40 @@ npm install
 
 ### 2. Set up environment variables
 
-Copy `.env.local.example` or create `.env.local` with:
+Create `.env.local` with the following. Vercel's project settings page is the source of truth — copy from there if you have access.
 
 ```env
+# Sanity (CMS)
 NEXT_PUBLIC_SANITY_PROJECT_ID=your_project_id
 NEXT_PUBLIC_SANITY_DATASET=production
 NEXT_PUBLIC_SANITY_API_VERSION=2024-01-01
-SANITY_API_READ_TOKEN=your_read_token
 SANITY_REVALIDATE_SECRET=your_webhook_secret
+
+# Stripe (membership payments)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_or_live_...
+STRIPE_SECRET_KEY=sk_test_or_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Airtable (member roster)
+AIRTABLE_API_KEY=pat...
+AIRTABLE_BASE_ID=app...
+AIRTABLE_TABLE_NAME=Members  # optional, defaults to "Members"
+
+# GroupMe (auto-add new members to the group chat)
+GROUPME_ACCESS_TOKEN=...
+GROUPME_GROUP_ID=...
+
+# Resend (admin notification email when GroupMe auto-add falls through)
+RESEND_API_KEY=re_...
+ADMIN_NOTIFICATION_EMAIL=exec.psusasa@gmail.com
 ```
 
 To get your Sanity project ID:
 1. Go to [sanity.io/manage](https://www.sanity.io/manage)
 2. Create a new project (or use an existing one)
 3. Copy the Project ID from the project settings
+
+> **Note:** Sanity, Stripe webhook secret, and Resend can be skipped for read-only local browsing of pre-existing content, but anything involving the `/join` flow (membership form, payment, post-payment redirect) requires the full Stripe + Airtable + GroupMe stack to work end-to-end.
 
 ### 3. Run the development server
 
@@ -50,18 +70,23 @@ Open [http://localhost:3000](http://localhost:3000) for the website and [http://
 ```
 src/
   app/
-    page.tsx                    # Home page
-    layout.tsx                  # Root layout (fonts, metadata)
-    (site)/                     # Route group for public pages
-      layout.tsx                # Navbar + Footer wrapper
+    page.tsx                          # Home page
+    layout.tsx                        # Root layout (fonts, metadata)
+    not-found.tsx                     # CMS-driven 404 page
+    (site)/                           # Route group for public pages (Navbar + Footer)
+      layout.tsx
       about/page.tsx
       events/page.tsx
       events/[slug]/page.tsx
       eboard/page.tsx
       gallery/page.tsx
       join/page.tsx
-    studio/[[...tool]]/page.tsx # Embedded Sanity Studio
-    api/revalidate/route.ts     # Webhook for on-demand revalidation
+      join/return/page.tsx            # Post-payment success / pending / error
+    studio/[[...tool]]/page.tsx       # Embedded Sanity Studio
+    api/
+      revalidate/route.ts             # Sanity webhook -> revalidatePath
+      create-payment-intent/route.ts  # Stripe PaymentIntent for membership
+      stripe-webhook/route.ts         # Stripe webhook -> Airtable + GroupMe
   components/
     layout/     # Navbar, Footer
     shared/     # SectionHeading, Button, EventCard
@@ -70,20 +95,43 @@ src/
     events/     # EventGrid, CategoryFilter
     eboard/     # OfficerCard
     gallery/    # GalleryGrid, ImageLightbox
+    join/       # MembershipForm, ClearSavedForm
   lib/
     types.ts    # TypeScript interfaces
+    airtable.ts # Append member rows to Airtable
+    groupme.ts  # Auto-add member to GroupMe (+ admin email fallback)
 sanity/
   lib/
     client.ts   # Sanity client
     image.ts    # Image URL builder
     queries.ts  # All GROQ queries
-  schemas/      # event, officer, galleryImage, announcement
+    types.ts    # TypeScript interfaces for Sanity content
+  schemas/      # event, eventCategory, officer, galleryImage, announcement,
+                # siteSettings, homePage, aboutPage, joinPage,
+                # membershipFormCopy, membershipConfirmation, notFoundPage
+  structure.ts  # Studio sidebar layout (singletons vs collections)
 sanity.config.ts
 ```
 
 ## Managing Content via Sanity Studio
 
-Navigate to `/studio` (e.g., `localhost:3000/studio` or `psusasa.com/studio`) to access the CMS.
+Navigate to `/studio` (e.g., `localhost:3000/studio` or `psusasa.com/studio`) to access the CMS. The sidebar is split into two sections: **singletons** (one-and-only-one page-content docs at the top) and **collections** (lists of items below the divider).
+
+### Editing page content (singletons)
+
+These docs control text, hero copy, CTAs, and form labels across the site. Each one is unique — you edit it, you don't create more. Click into one, change fields, click **Publish** (the **Publish** button matters — autosaves only save drafts and aren't read by the live site).
+
+| Singleton | What it controls |
+|-----------|------------------|
+| **Site Settings** | Navbar links, footer copy, contact info, social handles |
+| **Home Page** | Hero, mission section, upcoming-events module copy, join CTA block |
+| **About Page** | Hero, history, mission, countries-we-represent list, values |
+| **Join Page** | Hero, "Why Join SASA" reasons, form section heading/subtitle/help text, contact cards, social buttons |
+| **Membership Form** | Field labels, year/gender/religion/identity/generation options, error messages, button labels, the membership price (in cents) |
+| **Membership Confirmation** | The `/join/return` page after successful payment — title, body (`{{price}}` token auto-fills from Membership Form), Next Steps bullets, CTA buttons, plus pending and direct-visit error states |
+| **404 Page** | Title, subtitle, body, primary + optional secondary CTA buttons |
+
+> **Caching note:** most pages have ISR with `revalidate = 60`, so published changes appear on the live site within ~60 seconds. The `/join/return` and `/not-found` pages render on every request, so their edits show immediately.
 
 ### Adding Events
 
