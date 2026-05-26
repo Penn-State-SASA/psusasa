@@ -620,6 +620,22 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
 
   const priceDisplay = formatPrice(copy?.priceCents ?? 50);
 
+  const isStep1Valid = useMemo(() => {
+    if (!step1.firstName.trim()) return false;
+    if (!step1.lastName.trim()) return false;
+    if (!/^[^\s@]+@psu\.edu$/i.test(step1.psuEmail.trim())) return false;
+    if (
+      !step1.phone.trim() ||
+      !isValidPhoneNumber(
+        `+${getCountryCallingCode(phoneCountry)}${step1.phone}`
+      )
+    ) {
+      return false;
+    }
+    if (!step1.year) return false;
+    return true;
+  }, [step1, phoneCountry]);
+
   function validateStep1(): boolean {
     const next: Record<string, string> = {};
 
@@ -1015,7 +1031,8 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
           <div className="mt-6 flex justify-end gap-3">
             <button
               onClick={goToStep2}
-              className="rounded bg-sasa-red-900 px-6 py-2 text-sm font-semibold text-white hover:bg-sasa-red-700 transition-colors"
+              disabled={!isStep1Valid}
+              className="rounded bg-sasa-red-900 px-6 py-2 text-sm font-semibold text-white hover:bg-sasa-red-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sasa-red-900 transition-colors"
             >
               {t.step1.nextLabel}
             </button>
