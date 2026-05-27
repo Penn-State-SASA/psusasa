@@ -41,17 +41,33 @@ export default async function EventDetailPage({ params }: EventPageProps) {
 
   if (!event) notFound();
 
-  const formattedDate = new Date(event.date).toLocaleDateString("en-US", {
+  const start = new Date(event.date);
+  const end =
+    event.endDate && !event.hideEndTime ? new Date(event.endDate) : null;
+
+  const formattedDate = start.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
   });
 
-  const formattedTime = new Date(event.date).toLocaleTimeString("en-US", {
+  const timeFormat: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
-  });
+  };
+
+  const sameDay =
+    end &&
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+
+  const formattedTime = end
+    ? sameDay
+      ? `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleTimeString("en-US", timeFormat)}`
+      : `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${end.toLocaleTimeString("en-US", timeFormat)}`
+    : start.toLocaleTimeString("en-US", timeFormat);
 
   function getTextColor(hex: string): string {
     const r = parseInt(hex.slice(1, 3), 16) / 255;

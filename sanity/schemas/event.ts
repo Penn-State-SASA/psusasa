@@ -20,9 +20,28 @@ export default defineType({
     }),
     defineField({
       name: "date",
-      title: "Date",
+      title: "Start Date & Time",
       type: "datetime",
       validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "endDate",
+      title: "End Date & Time",
+      type: "datetime",
+      description:
+        "When the event ends. The event will disappear from the site after this time. If left blank, the start time is used.",
+      validation: (Rule) =>
+        Rule.min(Rule.valueOfField("date")).warning(
+          "End time should be after the start time."
+        ),
+    }),
+    defineField({
+      name: "hideEndTime",
+      title: "Hide end time from site",
+      type: "boolean",
+      description:
+        "If checked, the end time will not be shown to site visitors. The event will still automatically disappear after the end time passes.",
+      initialValue: false,
     }),
     defineField({
       name: "description",

@@ -26,6 +26,8 @@ export interface SanityEvent {
   title: string;
   slug: { current: string };
   date: string;
+  endDate?: string;
+  hideEndTime?: boolean;
   description: string;
   coverImage: SanityImageSource;
   category: SanityEventCategory | null;

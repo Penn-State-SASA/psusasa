@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { sanityFetch } from "../../../../sanity/lib/client";
 import {
   upcomingEventsQuery,
-  pastEventsQuery,
   categoriesQuery,
 } from "../../../../sanity/lib/queries";
 import SectionHeading from "@/components/shared/SectionHeading";
@@ -12,15 +11,14 @@ import type { SanityEvent, SanityEventCategory } from "@/lib/types";
 export const metadata: Metadata = {
   title: "Events | SASA at Penn State",
   description:
-    "Explore upcoming and past events hosted by the South Asian Student Association at Penn State.",
+    "Explore upcoming events hosted by the South Asian Student Association at Penn State.",
 };
 
 export const revalidate = 60;
 
 export default async function EventsPage() {
-  const [upcoming, past, categories] = await Promise.all([
+  const [upcoming, categories] = await Promise.all([
     sanityFetch<SanityEvent>(upcomingEventsQuery),
-    sanityFetch<SanityEvent>(pastEventsQuery),
     sanityFetch<SanityEventCategory>(categoriesQuery),
   ]);
 
@@ -44,7 +42,7 @@ export default async function EventsPage() {
 
       <section className="py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          {upcoming.length === 0 && past.length === 0 ? (
+          {upcoming.length === 0 ? (
             <div className="text-center">
               <SectionHeading>Events Coming Soon</SectionHeading>
               <p className="mt-4 text-sasa-neutral-500">
@@ -63,7 +61,6 @@ export default async function EventsPage() {
           ) : (
             <EventsPageClient
               upcoming={upcoming}
-              past={past}
               categories={categories}
             />
           )}
