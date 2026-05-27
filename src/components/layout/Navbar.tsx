@@ -10,7 +10,7 @@ const FALLBACK_NAV: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/events", label: "Events" },
-  { href: "/eboard", label: "E-Board" },
+  { href: "/eboard", label: "Admin Board" },
   { href: "/gallery", label: "Gallery" },
   { href: "/join", label: "Join" },
 ];

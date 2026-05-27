@@ -45,28 +45,30 @@ export default async function EventDetailPage({ params }: EventPageProps) {
   const end =
     event.endDate && !event.hideEndTime ? new Date(event.endDate) : null;
 
+  const TIME_ZONE = "America/New_York";
+
   const formattedDate = start.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: TIME_ZONE,
   });
 
   const timeFormat: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: TIME_ZONE,
   };
 
-  const sameDay =
-    end &&
-    start.getFullYear() === end.getFullYear() &&
-    start.getMonth() === end.getMonth() &&
-    start.getDate() === end.getDate();
+  const dayKey = (d: Date) =>
+    d.toLocaleDateString("en-US", { timeZone: TIME_ZONE });
+  const sameDay = end && dayKey(start) === dayKey(end);
 
   const formattedTime = end
     ? sameDay
       ? `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleTimeString("en-US", timeFormat)}`
-      : `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${end.toLocaleTimeString("en-US", timeFormat)}`
+      : `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: TIME_ZONE })}, ${end.toLocaleTimeString("en-US", timeFormat)}`
     : start.toLocaleTimeString("en-US", timeFormat);
 
   function getTextColor(hex: string): string {

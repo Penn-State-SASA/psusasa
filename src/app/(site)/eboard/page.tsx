@@ -43,9 +43,9 @@ export default async function EBoardPage() {
             </div>
           ) : (
             <div className="text-center">
-              <SectionHeading>E-Board Coming Soon</SectionHeading>
+              <SectionHeading>Admin Board Coming Soon</SectionHeading>
               <p className="mt-4 text-sasa-neutral-500">
-                Our executive board members will be listed here soon. Check back
+                Our admin board members will be listed here soon. Check back
                 later!
               </p>
             </div>
