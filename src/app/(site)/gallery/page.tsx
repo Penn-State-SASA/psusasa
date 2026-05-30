@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "Gallery | SASA at Penn State",
   description:
     "Browse photos from SASA events, cultural shows, and gatherings at Penn State.",
+  alternates: { canonical: "/gallery" },
 };
 
 export const revalidate = 60;

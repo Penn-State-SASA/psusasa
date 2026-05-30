@@ -22,8 +22,25 @@ export default async function HomePage() {
     sanityFetchSingle<SiteSettings>(siteSettingsQuery),
   ]);
 
+  const orgJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Penn State South Asian Student Association",
+    alternateName: "SASA",
+    url: "https://psusasa.com",
+    logo: "https://psusasa.com/sasa-logo.png",
+    sameAs: [
+      settings?.contact?.instagramUrl,
+      settings?.contact?.tiktokUrl,
+    ].filter(Boolean),
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+      />
       <Navbar navItems={settings?.navItems} />
       <main>
         <Hero copy={copy?.hero} />
