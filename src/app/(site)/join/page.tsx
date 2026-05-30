@@ -27,6 +27,7 @@ export const metadata: Metadata = {
   title: "Join | SASA at Penn State",
   description:
     "Join the South Asian Student Association at Penn State. Get involved, meet new people, and celebrate South Asian culture.",
+  alternates: { canonical: "/join" },
 };
 
 const FALLBACK_HERO_TITLE = "Join SASA";

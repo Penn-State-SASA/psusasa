@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: "Events | SASA at Penn State",
   description:
     "Explore upcoming events hosted by the South Asian Student Association at Penn State.",
+  alternates: { canonical: "/events" },
 };
 
 export const revalidate = 60;

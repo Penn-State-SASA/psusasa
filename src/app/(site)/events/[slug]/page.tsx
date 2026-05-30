@@ -29,6 +29,7 @@ export async function generateMetadata({
   return {
     title: `${event.title} | SASA at Penn State`,
     description: event.description || `${event.title} — a SASA event`,
+    alternates: { canonical: `/events/${params.slug}` },
   };
 }
 
@@ -79,8 +80,32 @@ export default async function EventDetailPage({ params }: EventPageProps) {
     return luminance > 0.5 ? "#1a1a1a" : "#ffffff";
   }
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    startDate: start.toISOString(),
+    ...(end ? { endDate: end.toISOString() } : {}),
+    eventStatus: "https://schema.org/EventScheduled",
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    description: event.description ?? `${event.title} — a SASA event`,
+    ...(event.coverImage
+      ? { image: [urlFor(event.coverImage).width(1200).height(675).url()] }
+      : {}),
+    organizer: {
+      "@type": "Organization",
+      name: "Penn State SASA",
+      url: "https://psusasa.com",
+    },
+    url: `https://psusasa.com/events/${params.slug}`,
+  };
+
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Back link */}
       <div className="bg-gray-50 py-4">
         <div className="mx-auto max-w-4xl px-4">

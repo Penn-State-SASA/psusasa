@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "Admin Board | SASA at Penn State",
   description:
     "Meet the Admin Board of the South Asian Student Association at Penn State.",
+  alternates: { canonical: "/eboard" },
 };
 
 export const revalidate = 60;

@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   title: "About | SASA at Penn State",
   description:
     "Learn about the South Asian Student Association at Penn State — our history, mission, and the countries we represent.",
+  alternates: { canonical: "/about" },
 };
 
 const FALLBACK_COUNTRIES: CountryItem[] = [

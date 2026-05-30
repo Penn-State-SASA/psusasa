@@ -18,6 +18,7 @@ import type { PortableTextBlock } from "@portabletext/types";
 export const metadata: Metadata = {
   title: "Welcome | SASA at Penn State",
   description: "You're officially a SASA member!",
+  robots: { index: false, follow: false },
 };
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
