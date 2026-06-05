@@ -29,6 +29,11 @@ export async function appendMemberToAirtable(
     }
   }
 
+  const amountPaidCents = Number(metadata.amountPaidCents);
+  const amountPaidDollars = Number.isFinite(amountPaidCents)
+    ? amountPaidCents / 100
+    : null;
+
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: {
@@ -43,6 +48,8 @@ export async function appendMemberToAirtable(
         "PSU Email": metadata.psuEmail,
         Phone: metadata.phone,
         Year: metadata.year,
+        "Membership Type": metadata.membershipTier ?? metadata.membershipType,
+        "Amount Paid": amountPaidDollars,
         Major: metadata.major,
         Hometown: metadata.hometown,
         Gender: metadata.gender,
