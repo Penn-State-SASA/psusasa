@@ -26,16 +26,20 @@ export async function lookupPastMember(
 
   if (!res.ok) {
     console.error(
-      `Past Members lookup failed: ${res.status} ${await res.text()}`
+      `Past Members lookup failed (table="${tableName}", base="${process.env.AIRTABLE_BASE_ID}"): ${res.status} ${await res.text()}`
     );
-    // Fail open so a transient Airtable outage doesn't block all returning
-    // member signups. Verification is a price-tier check, not a security
-    // gate — payment still requires a valid card.
-    return true;
+    // Fail closed — any error treats the user as not-a-past-member, so a
+    // missing/misconfigured Past Members table cannot silently let
+    // ineligible signups through.
+    return false;
   }
 
   const data = (await res.json()) as { records?: unknown[] };
-  return !!(data.records && data.records.length > 0);
+  const matched = !!(data.records && data.records.length > 0);
+  console.log(
+    `Past Members lookup "${first} ${last}" in "${tableName}": ${matched ? "MATCH" : "no match"}`
+  );
+  return matched;
 }
 
 export async function appendMemberToAirtable(
