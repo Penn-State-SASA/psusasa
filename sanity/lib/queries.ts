@@ -46,6 +46,7 @@ export const membershipFormCopyQuery = `*[_id == "membershipFormCopy"][0] {
     heading,
     returningLabel, returningPriceCents,
     transferLabel, transferPriceCents,
+    transferPendingTitle, transferPendingMessage, transferPendingEmail,
     newMemberLabel, newMemberPriceCents,
     requiredError
   },

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sanityFetchSingle } from "../../../../sanity/lib/client";
 import { membershipFormCopyQuery } from "../../../../sanity/lib/queries";
 import type { MembershipFormCopy } from "../../../../sanity/lib/types";
+import { lookupPastMember } from "@/lib/airtable";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -35,6 +36,22 @@ export async function POST(req: NextRequest) {
         { error: "Invalid membership type. Please go back and select one." },
         { status: 400 }
       );
+    }
+
+    if (membershipType === "returning") {
+      const wasPastMember = await lookupPastMember(
+        String(firstName ?? ""),
+        String(lastName ?? "")
+      );
+      if (!wasPastMember) {
+        return NextResponse.json(
+          {
+            error:
+              "We don't see your name in our 2025–2026 member records. If this is a mistake, please email exec.psusasa@gmail.com — otherwise, please go back and select New Member.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const copy = await sanityFetchSingle<MembershipFormCopy>(
