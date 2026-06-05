@@ -42,6 +42,13 @@ export const announcementsQuery = `*[_type == "announcement"] | order(publishedA
 
 export const membershipFormCopyQuery = `*[_id == "membershipFormCopy"][0] {
   priceCents,
+  tiers{
+    heading,
+    returningLabel, returningPriceCents,
+    transferLabel, transferPriceCents,
+    newMemberLabel, newMemberPriceCents,
+    requiredError
+  },
   stepLabels{ step1, step2, step3 },
   step1{
     intro,

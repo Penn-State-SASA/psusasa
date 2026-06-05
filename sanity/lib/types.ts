@@ -156,8 +156,20 @@ export interface MembershipConfirmationCopy {
   };
 }
 
+export interface MembershipTiersCopy {
+  heading?: string;
+  returningLabel?: string;
+  returningPriceCents?: number;
+  transferLabel?: string;
+  transferPriceCents?: number;
+  newMemberLabel?: string;
+  newMemberPriceCents?: number;
+  requiredError?: string;
+}
+
 export interface MembershipFormCopy {
   priceCents?: number;
+  tiers?: MembershipTiersCopy;
   stepLabels?: { step1?: string; step2?: string; step3?: string };
   step1?: {
     intro?: PortableTextBlock[];
