@@ -162,6 +162,9 @@ export interface MembershipTiersCopy {
   returningPriceCents?: number;
   transferLabel?: string;
   transferPriceCents?: number;
+  transferPendingTitle?: string;
+  transferPendingMessage?: string;
+  transferPendingEmail?: string;
   newMemberLabel?: string;
   newMemberPriceCents?: number;
   requiredError?: string;

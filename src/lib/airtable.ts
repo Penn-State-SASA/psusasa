@@ -1,3 +1,43 @@
+function escapeForAirtableFormula(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+export async function lookupPastMember(
+  firstName: string,
+  lastName: string
+): Promise<boolean> {
+  const tableName =
+    process.env.AIRTABLE_PAST_MEMBERS_TABLE_NAME ?? "Past Members";
+  const baseUrl = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
+
+  const first = firstName.trim().toLowerCase();
+  const last = lastName.trim().toLowerCase();
+  if (!first || !last) return false;
+
+  const formula = `AND(LOWER(TRIM({First Name})) = '${escapeForAirtableFormula(first)}', LOWER(TRIM({Last Name})) = '${escapeForAirtableFormula(last)}')`;
+
+  const res = await fetch(
+    `${baseUrl}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1`,
+    {
+      headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` },
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    console.error(
+      `Past Members lookup failed: ${res.status} ${await res.text()}`
+    );
+    // Fail open so a transient Airtable outage doesn't block all returning
+    // member signups. Verification is a price-tier check, not a security
+    // gate — payment still requires a valid card.
+    return true;
+  }
+
+  const data = (await res.json()) as { records?: unknown[] };
+  return !!(data.records && data.records.length > 0);
+}
+
 export async function appendMemberToAirtable(
   metadata: Record<string, string>,
   paymentIntentId: string

@@ -41,12 +41,16 @@ export async function POST(req: NextRequest) {
 
       if (paymentIntent.metadata) {
         await appendMemberToAirtable(paymentIntent.metadata, paymentIntent.id);
-        // GroupMe failure must not block the 200 response — it self-handles
-        // errors by emailing the admin.
-        try {
-          await addMemberToGroupMe(paymentIntent.metadata, paymentIntent.id);
-        } catch (err) {
-          console.error("GroupMe add threw unexpectedly:", err);
+        // Transfer students are added to GroupMe manually after admin
+        // verifies their campus change proof email — skip the auto-add.
+        if (paymentIntent.metadata.membershipType !== "transfer") {
+          // GroupMe failure must not block the 200 response — it self-handles
+          // errors by emailing the admin.
+          try {
+            await addMemberToGroupMe(paymentIntent.metadata, paymentIntent.id);
+          } catch (err) {
+            console.error("GroupMe add threw unexpectedly:", err);
+          }
         }
       }
     }

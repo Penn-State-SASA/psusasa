@@ -174,11 +174,32 @@ export default defineType({
         },
         {
           name: "transferPriceCents",
-          title: "Transfer Student Price (in cents)",
+          title: "Transfer Student Price (in cents) — for display only",
           type: "number",
-          description: "Example: 2500 = $25.00",
+          description:
+            "Example: 2500 = $25.00. Transfer students are NOT charged through the site — they're routed to a pending-approval screen and follow up over email. This number is shown next to the radio option on Step 1 so they know the eventual cost.",
           initialValue: 2500,
           validation: (Rule) => Rule.required().integer().min(50),
+        },
+        {
+          name: "transferPendingTitle",
+          title: "Transfer — Pending Screen Title",
+          type: "string",
+          initialValue: "Request Pending Approval",
+        },
+        {
+          name: "transferPendingMessage",
+          title: "Transfer — Pending Screen Message",
+          type: "text",
+          rows: 5,
+          initialValue:
+            "Thanks for your interest! Since you're a transfer student, we need to verify before adding you to the GroupMe. Please email a screenshot of your Penn State campus change confirmation email to exec.psusasa@gmail.com. Once verified, we'll add you to the GroupMe and follow up about payment.",
+        },
+        {
+          name: "transferPendingEmail",
+          title: "Transfer — Contact Email",
+          type: "string",
+          initialValue: "exec.psusasa@gmail.com",
         },
         {
           name: "newMemberLabel",

@@ -43,6 +43,10 @@ const TIER_FALLBACK = {
   returningPriceCents: 2500,
   transferLabel: "Early Bird 1 — Transfer Student",
   transferPriceCents: 2500,
+  transferPendingTitle: "Request Pending Approval",
+  transferPendingMessage:
+    "Thanks for your interest! Since you're a transfer student, we need to verify before adding you to the GroupMe. Please email a screenshot of your Penn State campus change confirmation email to exec.psusasa@gmail.com. Once verified, we'll add you to the GroupMe and follow up about payment.",
+  transferPendingEmail: "exec.psusasa@gmail.com",
   newMemberLabel: "Early Bird 1 — New Member",
   newMemberPriceCents: 2800,
   requiredError: "Please select your membership type.",
@@ -589,6 +593,12 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
           tiers.transferPriceCents >= 50
             ? tiers.transferPriceCents
             : TIER_FALLBACK.transferPriceCents,
+        transferPendingTitle:
+          tiers?.transferPendingTitle ?? TIER_FALLBACK.transferPendingTitle,
+        transferPendingMessage:
+          tiers?.transferPendingMessage ?? TIER_FALLBACK.transferPendingMessage,
+        transferPendingEmail:
+          tiers?.transferPendingEmail ?? TIER_FALLBACK.transferPendingEmail,
         newMemberLabel:
           tiers?.newMemberLabel ?? TIER_FALLBACK.newMemberLabel,
         newMemberPriceCents:
