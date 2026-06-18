@@ -2,6 +2,7 @@ import event from "./event";
 import eventCategory from "./eventCategory";
 import officer from "./officer";
 import galleryImage from "./galleryImage";
+import galleryAlbum from "./galleryAlbum";
 import announcement from "./announcement";
 import siteSettings from "./siteSettings";
 import homePage from "./homePage";
@@ -16,6 +17,7 @@ export const schemaTypes = [
   eventCategory,
   officer,
   galleryImage,
+  galleryAlbum,
   announcement,
   siteSettings,
   homePage,

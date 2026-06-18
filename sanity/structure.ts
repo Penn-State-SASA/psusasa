@@ -28,6 +28,6 @@ export const structure = (S: StructureBuilder) =>
       S.documentTypeListItem("event").title("Events"),
       S.documentTypeListItem("eventCategory").title("Event Categories"),
       S.documentTypeListItem("officer").title("Officers"),
-      S.documentTypeListItem("galleryImage").title("Gallery"),
+      S.documentTypeListItem("galleryAlbum").title("Gallery"),
       S.documentTypeListItem("announcement").title("Announcements"),
     ]);
