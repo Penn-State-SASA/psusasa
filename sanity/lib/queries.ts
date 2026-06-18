@@ -36,12 +36,6 @@ export const galleryQuery = `*[_type == "galleryImage"] | order(semester desc, _
   "eventTitle": event->title
 }`;
 
-export const galleryAlbumsQuery = `*[_type == "galleryAlbum" && count(images) > 0] | order(semester desc, coalesce(date, "1970-01-01") desc, _createdAt desc) {
-  _id, title, semester, date,
-  "eventTitle": event->title,
-  images[]{ _key, image, caption }
-}`;
-
 export const announcementsQuery = `*[_type == "announcement"] | order(publishedAt desc)[0...5] {
   _id, title, body, publishedAt
 }`;

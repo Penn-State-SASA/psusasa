@@ -46,24 +46,9 @@ export interface Officer {
 export interface GalleryImage {
   _id: string;
   image: SanityImageSource;
-  caption?: string;
-  eventTitle?: string;
-  semester?: string;
-}
-
-export interface GalleryAlbumPhoto {
-  _key: string;
-  image: SanityImageSource;
-  caption?: string;
-}
-
-export interface GalleryAlbum {
-  _id: string;
-  title?: string;
+  caption: string;
   eventTitle?: string;
   semester: string;
-  date?: string;
-  images: GalleryAlbumPhoto[];
 }
 
 export interface Announcement {
