@@ -24,10 +24,17 @@ export default function GalleryGrid({ images }: GalleryGridProps) {
           >
             <div className="group relative">
               <Image
-                src={urlFor(img.image).width(600).height(600).url()}
+                src={urlFor(img.image)
+                  .width(1000)
+                  .height(1000)
+                  .fit("crop")
+                  .auto("format")
+                  .quality(80)
+                  .url()}
                 alt={img.caption || "Gallery image"}
-                width={600}
-                height={600}
+                width={1000}
+                height={1000}
+                sizes="(min-width: 1280px) 320px, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 className="w-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
               {/* Hover overlay */}

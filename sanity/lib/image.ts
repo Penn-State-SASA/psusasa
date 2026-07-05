@@ -10,12 +10,19 @@ const builder = projectId
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function urlFor(source: any) {
   if (!builder) {
-    return {
-      width: () => ({ height: () => ({ url: () => "/sasa-logo.png" }), url: () => "/sasa-logo.png" }),
-      height: () => ({ url: () => "/sasa-logo.png", width: () => ({ url: () => "/sasa-logo.png" }) }),
+    // Chainable no-op stub so any builder method sequence resolves to the
+    // fallback logo when the Sanity project id is unavailable.
+    const stub: Record<string, unknown> = {
       url: () => "/sasa-logo.png",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
+    };
+    const chain = new Proxy(stub, {
+      get(target, prop) {
+        if (prop === "url") return target.url;
+        return () => chain;
+      },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return chain as any;
   }
   return builder.image(source);
 }
