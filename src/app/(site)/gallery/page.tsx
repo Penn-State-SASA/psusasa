@@ -3,6 +3,9 @@ import { sanityFetch } from "../../../../sanity/lib/client";
 import { galleryAlbumsQuery } from "../../../../sanity/lib/queries";
 import SectionHeading from "@/components/shared/SectionHeading";
 import GalleryGrid from "@/components/gallery/GalleryGrid";
+import GalleryJumpBar, {
+  type JumpTarget,
+} from "@/components/gallery/GalleryJumpBar";
 import type { GalleryAlbum, GalleryImage } from "@/lib/types";
 
 export const metadata: Metadata = {
@@ -44,6 +47,14 @@ export default async function GalleryPage() {
 
   const semesterKeys = Object.keys(semesters);
 
+  const jumpTargets: JumpTarget[] = semesterKeys.flatMap((semester) =>
+    semesters[semester].map((album) => ({
+      id: album._id,
+      heading: albumHeading(album),
+      semester,
+    }))
+  );
+
   return (
     <div>
       {/* Hero Banner */}
@@ -61,6 +72,8 @@ export default async function GalleryPage() {
         </div>
       </section>
 
+      {jumpTargets.length > 1 && <GalleryJumpBar targets={jumpTargets} />}
+
       <section className="py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {albums.length > 0 ? (
@@ -72,7 +85,11 @@ export default async function GalleryPage() {
                   </h2>
                   <div className="space-y-14">
                     {semesters[semester].map((album) => (
-                      <div key={album._id}>
+                      <div
+                        key={album._id}
+                        id={`album-${album._id}`}
+                        className="scroll-mt-32"
+                      >
                         <h3 className="mb-6 font-heading text-xl font-semibold text-sasa-red-900">
                           {albumHeading(album)}
                         </h3>
