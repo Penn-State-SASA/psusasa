@@ -78,10 +78,16 @@ export default function ImageLightbox({
         onClick={(e) => e.stopPropagation()}
       >
         <Image
-          src={urlFor(image.image).width(1400).height(1000).url()}
+          src={urlFor(image.image)
+            .width(2000)
+            .fit("max")
+            .auto("format")
+            .quality(90)
+            .url()}
           alt={image.caption || "Gallery image"}
           width={1400}
           height={1000}
+          sizes="90vw"
           className="max-h-[85vh] w-auto rounded-lg object-contain"
         />
         {image.caption && (
