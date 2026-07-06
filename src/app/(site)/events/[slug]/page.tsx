@@ -72,6 +72,8 @@ export default async function EventDetailPage({ params }: EventPageProps) {
       : `${start.toLocaleTimeString("en-US", timeFormat)} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: TIME_ZONE })}, ${end.toLocaleTimeString("en-US", timeFormat)}`
     : start.toLocaleTimeString("en-US", timeFormat);
 
+  const showLocation = Boolean(event.location && !event.hideLocation);
+
   function getTextColor(hex: string): string {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -88,6 +90,9 @@ export default async function EventDetailPage({ params }: EventPageProps) {
     ...(end ? { endDate: end.toISOString() } : {}),
     eventStatus: "https://schema.org/EventScheduled",
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    ...(showLocation
+      ? { location: { "@type": "Place", name: event.location } }
+      : {}),
     description: event.description ?? `${event.title} — a SASA event`,
     ...(event.coverImage
       ? { image: [urlFor(event.coverImage).width(1200).height(675).url()] }
@@ -165,7 +170,7 @@ export default async function EventDetailPage({ params }: EventPageProps) {
           </h1>
 
           {/* Date & Time */}
-          <div className="mt-4 flex items-center gap-4 text-sasa-neutral-500">
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sasa-neutral-500">
             <div className="flex items-center gap-2">
               <svg
                 className="h-5 w-5 text-sasa-gold-600"
@@ -198,6 +203,30 @@ export default async function EventDetailPage({ params }: EventPageProps) {
               </svg>
               <span>{formattedTime}</span>
             </div>
+            {showLocation && (
+              <div className="flex items-center gap-2">
+                <svg
+                  className="h-5 w-5 text-sasa-gold-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+                  />
+                </svg>
+                <span>{event.location}</span>
+              </div>
+            )}
           </div>
 
           {/* Description */}

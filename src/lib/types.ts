@@ -28,6 +28,8 @@ export interface SanityEvent {
   date: string;
   endDate?: string;
   hideEndTime?: boolean;
+  location?: string;
+  hideLocation?: boolean;
   description: string;
   coverImage: SanityImageSource;
   category: SanityEventCategory | null;
