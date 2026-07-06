@@ -19,7 +19,6 @@ interface HeroProps {
 
 export default function Hero({ copy }: HeroProps) {
   const c = { ...FALLBACK, ...(copy ?? {}) };
-  const pillars = c.pillars.split("|").map((p) => p.trim()).filter(Boolean);
 
   return (
     <section className="relative flex min-h-[85vh] items-center justify-center overflow-hidden bg-sasa-red-900">
@@ -30,9 +29,9 @@ export default function Hero({ copy }: HeroProps) {
         {/* SASA Logo */}
         <div className="mb-6 flex justify-center">
           <Image
-            src="/sasa-logo.png"
+            src="/sasa-logo-white.png"
             alt="SASA Logo"
-            width={180}
+            width={243}
             height={135}
             priority
           />
@@ -45,19 +44,6 @@ export default function Hero({ copy }: HeroProps) {
         <p className="mx-auto mt-6 max-w-2xl text-lg text-white/80 sm:text-xl">
           {c.tagline}
         </p>
-
-        {pillars.length > 0 && (
-          <div className="mt-4 flex items-center justify-center gap-3 text-sasa-gold-600 font-heading text-xl tracking-widest">
-            {pillars.map((p, i) => (
-              <span key={i} className="flex items-center gap-3">
-                <span>{p}</span>
-                {i < pillars.length - 1 && (
-                  <span className="text-sasa-gold-400">|</span>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Button href={c.primaryCtaHref} variant="primary">
