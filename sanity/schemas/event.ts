@@ -44,6 +44,21 @@ export default defineType({
       initialValue: false,
     }),
     defineField({
+      name: "location",
+      title: "Location",
+      type: "string",
+      description:
+        'Where the event takes place, e.g. "HUB Flex Theatre". Shown beside the date and time.',
+    }),
+    defineField({
+      name: "hideLocation",
+      title: "Hide location from site",
+      type: "boolean",
+      description:
+        "If checked, the location will not be shown to site visitors.",
+      initialValue: false,
+    }),
+    defineField({
       name: "description",
       title: "Description",
       type: "text",

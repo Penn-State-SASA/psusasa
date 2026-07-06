@@ -64,6 +64,30 @@ export default function EventCard({ event }: EventCardProps) {
         <p className="text-xs font-medium uppercase tracking-wide text-sasa-gold-600">
           {formattedDate}
         </p>
+        {event.location && !event.hideLocation && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-sasa-neutral-500">
+            <svg
+              className="h-3.5 w-3.5 shrink-0 text-sasa-gold-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+              />
+            </svg>
+            <span className="truncate">{event.location}</span>
+          </p>
+        )}
         <h3 className="mt-1 font-heading text-lg font-semibold text-sasa-red-900 group-hover:text-sasa-red-700">
           {event.title}
         </h3>
