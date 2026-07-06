@@ -30,9 +30,9 @@ export default function Hero({ copy }: HeroProps) {
         {/* SASA Logo */}
         <div className="mb-6 flex justify-center">
           <Image
-            src="/sasa-logo.png"
+            src="/sasa-logo-white.png"
             alt="SASA Logo"
-            width={180}
+            width={243}
             height={135}
             priority
           />

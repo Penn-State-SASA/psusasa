@@ -54,9 +54,9 @@ export default function Footer({ footer, contact, quickLinks }: FooterProps) {
         {/* Logo + tagline */}
         <div className="mb-10 flex flex-col items-center gap-3">
           <Image
-            src="/sasa-logo.png"
+            src="/sasa-logo-white.png"
             alt="SASA Logo"
-            width={80}
+            width={108}
             height={60}
           />
           <p className="text-center text-sm text-sasa-gold-400/70">
