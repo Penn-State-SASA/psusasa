@@ -6,7 +6,6 @@ const FALLBACK: Required<CtaPair> = {
   title: "Celebrating South Asian Heritage in Happy Valley",
   tagline:
     "Penn State's South Asian Student Association — fostering community, culture, and connection since 1960.",
-  pillars: "Celebrate | Share | Grow",
   primaryCtaLabel: "Join SASA",
   primaryCtaHref: "/join",
   secondaryCtaLabel: "Upcoming Events",

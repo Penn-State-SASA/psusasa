@@ -118,7 +118,7 @@ export const aboutPageQuery = `*[_id == "aboutPage"][0] {
 
 export const homePageQuery = `*[_id == "homePage"][0] {
   hero{
-    title, tagline, pillars,
+    title, tagline,
     primaryCtaLabel, primaryCtaHref,
     secondaryCtaLabel, secondaryCtaHref
   },
