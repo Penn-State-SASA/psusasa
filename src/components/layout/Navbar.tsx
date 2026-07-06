@@ -32,9 +32,9 @@ export default function Navbar({ navItems }: NavbarProps) {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <Image
-            src="/sasa-logo.png"
+            src="/sasa-logo-white.png"
             alt="SASA — Penn State South Asian Student Association"
-            width={48}
+            width={65}
             height={36}
             priority
           />
