@@ -4,6 +4,7 @@ import { sanityFetchSingle } from "../../../../sanity/lib/client";
 import { membershipFormCopyQuery } from "../../../../sanity/lib/queries";
 import type { MembershipFormCopy } from "../../../../sanity/lib/types";
 import { lookupPastMember } from "@/lib/airtable";
+import { computeCardFee } from "@/lib/fees";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -71,12 +72,15 @@ export async function POST(req: NextRequest) {
           ? copy?.tiers?.transferLabel ?? "Transfer Student"
           : copy?.tiers?.newMemberLabel ?? "New Member";
 
-    const amount =
+    const baseAmount =
       typeof tierPriceCents === "number" && tierPriceCents >= 50
         ? Math.round(tierPriceCents)
         : typeof copy?.priceCents === "number" && copy.priceCents >= 50
           ? Math.round(copy.priceCents)
           : 50;
+
+    // Add a card-processing surcharge so SASA nets the full tier price.
+    const { feeCents, totalCents: amount } = computeCardFee(baseAmount);
 
     const metadata: Record<string, string> = {
       firstName: String(firstName ?? "").slice(0, 500),
@@ -87,6 +91,8 @@ export async function POST(req: NextRequest) {
       membershipType: String(membershipType).slice(0, 50),
       membershipTier: tierLabel.slice(0, 500),
       amountPaidCents: String(amount),
+      baseAmountCents: String(baseAmount),
+      cardFeeCents: String(feeCents),
       major: String(major ?? "").slice(0, 500),
       hometown: String(hometown ?? "").slice(0, 500),
       gender: String(gender ?? "").slice(0, 500),

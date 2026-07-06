@@ -19,6 +19,7 @@ import { AsYouType } from "libphonenumber-js";
 import { PortableText } from "@portabletext/react";
 import type { PortableTextBlock } from "@portabletext/types";
 import type { MembershipFormCopy } from "../../../sanity/lib/types";
+import { computeCardFee } from "@/lib/fees";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -694,9 +695,11 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
           ? t.tiers.newMemberPriceCents
           : null;
 
-  const priceDisplay = formatPrice(
-    selectedTierPriceCents ?? copy?.priceCents ?? 50
-  );
+  const baseCents = selectedTierPriceCents ?? copy?.priceCents ?? 50;
+  const fee = computeCardFee(baseCents);
+  const priceDisplay = formatPrice(baseCents);
+  const feeDisplay = formatPrice(fee.feeCents);
+  const totalDisplay = formatPrice(fee.totalCents);
 
   const isStep1Valid = useMemo(() => {
     if (!step1.firstName.trim()) return false;
@@ -1530,10 +1533,27 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
               <span className="text-base font-semibold text-sasa-red-900">
                 {t.step3.productName}
               </span>
-              <span className="text-2xl font-bold text-sasa-gold-600">
+              <span className="text-base font-semibold text-sasa-red-900">
                 {priceDisplay}
               </span>
             </div>
+            <div className="mt-1 flex justify-between items-baseline text-sm text-sasa-neutral-500">
+              <span>Card processing fee</span>
+              <span>{feeDisplay}</span>
+            </div>
+            <div className="mt-2 flex justify-between items-baseline border-t border-gray-200 pt-2">
+              <span className="text-base font-semibold text-sasa-red-900">
+                Total
+              </span>
+              <span className="text-2xl font-bold text-sasa-gold-600">
+                {totalDisplay}
+              </span>
+            </div>
+            <p className="mt-3 text-xs text-sasa-neutral-500">
+              A {feeDisplay} card processing fee is added to your {priceDisplay}{" "}
+              membership so the full amount goes to SASA. You&apos;ll be charged{" "}
+              {totalDisplay} total.
+            </p>
           </div>
 
           {submitError && (
