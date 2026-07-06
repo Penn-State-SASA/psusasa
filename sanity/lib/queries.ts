@@ -1,25 +1,25 @@
 export const upcomingEventsQuery = `*[_type == "event" && coalesce(endDate, date) >= now()] | order(date asc) {
-  _id, title, slug, date, endDate, hideEndTime, description, coverImage, isFeatured,
+  _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
   "category": category->{ _id, name, color }
 }`;
 
 export const pastEventsQuery = `*[_type == "event" && coalesce(endDate, date) < now()] | order(date desc) {
-  _id, title, slug, date, endDate, hideEndTime, description, coverImage, isFeatured,
+  _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
   "category": category->{ _id, name, color }
 }`;
 
 export const featuredEventsQuery = `*[_type == "event" && isFeatured == true && coalesce(endDate, date) >= now()] | order(date asc)[0...3] {
-  _id, title, slug, date, endDate, hideEndTime, description, coverImage,
+  _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage,
   "category": category->{ _id, name, color }
 }`;
 
 export const allEventsQuery = `*[_type == "event"] | order(date desc) {
-  _id, _updatedAt, title, slug, date, endDate, hideEndTime, description, coverImage, isFeatured,
+  _id, _updatedAt, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
   "category": category->{ _id, name, color }
 }`;
 
 export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0] {
-  _id, title, slug, date, endDate, hideEndTime, description, coverImage, isFeatured,
+  _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
   "category": category->{ _id, name, color }
 }`;
 
