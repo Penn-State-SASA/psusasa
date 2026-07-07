@@ -25,12 +25,6 @@ export default defineType({
             "Penn State's South Asian Student Association — fostering community, culture, and connection since 1960.",
         },
         {
-          name: "pillars",
-          title: "Pillars (separated by | )",
-          type: "string",
-          initialValue: "Celebrate | Share | Grow",
-        },
-        {
           name: "primaryCtaLabel",
           title: "Primary CTA Label",
           type: "string",

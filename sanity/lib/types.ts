@@ -34,7 +34,6 @@ export interface SiteSettings {
 export interface CtaPair {
   title?: string;
   tagline?: string;
-  pillars?: string;
   primaryCtaLabel?: string;
   primaryCtaHref?: string;
   secondaryCtaLabel?: string;
