@@ -17,6 +17,7 @@ const FALLBACK_CONTACT: Required<ContactCopy> = {
   instagramUrl: "https://instagram.com/psusasa",
   tiktokHandle: "@sasapsu",
   tiktokUrl: "https://tiktok.com/@sasapsu",
+  linkedinUrl: "",
   officeAddress: "204 HUB\nPenn State University Park",
 };
 
@@ -99,6 +100,18 @@ export default function Footer({ footer, contact, quickLinks }: FooterProps) {
                 </a>
               </li>
               <li>Instagram DM: {c.instagramHandle}</li>
+              {c.linkedinUrl && (
+                <li>
+                  <a
+                    href={c.linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="transition-colors hover:text-sasa-gold-400"
+                  >
+                    LinkedIn
+                  </a>
+                </li>
+              )}
               {c.officeAddress.split("\n").map((line, i) => (
                 <li key={i}>{line}</li>
               ))}

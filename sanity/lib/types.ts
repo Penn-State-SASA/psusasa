@@ -21,6 +21,7 @@ export interface ContactCopy {
   instagramUrl?: string;
   tiktokHandle?: string;
   tiktokUrl?: string;
+  linkedinUrl?: string;
   officeAddress?: string;
 }
 
