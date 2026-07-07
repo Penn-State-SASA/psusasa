@@ -106,6 +106,13 @@ export default defineType({
           initialValue: "https://tiktok.com/@sasapsu",
         },
         {
+          name: "linkedinUrl",
+          title: "LinkedIn URL",
+          description:
+            "Link to the SASA LinkedIn page. Shows under Contact Us in the footer when set.",
+          type: "url",
+        },
+        {
           name: "officeAddress",
           title: "Office Address",
           type: "text",

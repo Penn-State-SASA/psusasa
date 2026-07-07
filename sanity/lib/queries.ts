@@ -166,6 +166,7 @@ export const siteSettingsQuery = `*[_id == "siteSettings"][0] {
     instagramUrl,
     tiktokHandle,
     tiktokUrl,
+    linkedinUrl,
     officeAddress
   }
 }`;
