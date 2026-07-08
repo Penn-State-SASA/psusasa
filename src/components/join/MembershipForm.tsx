@@ -11,6 +11,7 @@ import {
 import {
   isValidPhoneNumber,
   getCountryCallingCode,
+  getCountries,
   type Country,
 } from "react-phone-number-input";
 import flags from "react-phone-number-input/flags";
@@ -369,6 +370,11 @@ function nanpDigitLimit(country: Country): number | null {
   return NANP_COUNTRIES.has(country) ? 10 : null;
 }
 
+// Every country the phone library supports, sorted alphabetically by name.
+const ALL_COUNTRIES: Country[] = getCountries()
+  .slice()
+  .sort((a, b) => (en[a] ?? a).localeCompare(en[b] ?? b));
+
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -418,6 +424,7 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
     reconciled?.phoneCountry ?? "US"
   );
   const [countryOpen, setCountryOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
   const countryDropdownRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
 
@@ -438,6 +445,24 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [countryOpen]);
+
+  useEffect(() => {
+    if (!countryOpen) setCountrySearch("");
+  }, [countryOpen]);
+
+  const filteredCountries = useMemo(() => {
+    const q = countrySearch.trim().toLowerCase();
+    if (!q) return ALL_COUNTRIES;
+    return ALL_COUNTRIES.filter((c) => {
+      const name = (en[c] ?? c).toLowerCase();
+      const code = getCountryCallingCode(c);
+      return (
+        name.includes(q) ||
+        c.toLowerCase().includes(q) ||
+        code.includes(q.replace(/^\+/, ""))
+      );
+    });
+  }, [countrySearch]);
 
   const [step1, setStep1] = useState<Step1>(
     reconciled?.step1 ?? {
@@ -977,22 +1002,6 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
                     aria-haspopup="listbox"
                     aria-expanded={countryOpen}
                     onClick={() => setCountryOpen((o) => !o)}
-                    onKeyDown={(e) => {
-                      if (e.key.length !== 1 || !/[a-zA-Z]/.test(e.key)) return;
-                      const letter = e.key.toLowerCase();
-                      const shortcuts: Record<string, Country> = {
-                        u: "US",
-                        i: "IN",
-                        c: "CA",
-                        k: "GB",
-                      };
-                      const target = shortcuts[letter];
-                      if (target) {
-                        e.preventDefault();
-                        setPhoneCountry(target);
-                        setStep1((p) => ({ ...p, phone: "" }));
-                      }
-                    }}
                     className="flex items-center gap-1.5 h-full rounded border border-gray-300 bg-white px-2 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
                   >
                     <span className="inline-block w-6 h-4 overflow-hidden">
@@ -1008,41 +1017,57 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
                     <span className="text-gray-400 text-xs">▾</span>
                   </button>
                   {countryOpen && (
-                    <ul
-                      role="listbox"
-                      className="absolute z-10 mt-1 max-h-64 w-72 overflow-auto rounded border border-gray-300 bg-white py-1 text-sm shadow-lg"
-                    >
-                      {(["US", "IN", "CA", "GB"] as Country[]).map((c) => {
-                        const Flag = flags[c];
-                        return (
-                          <li
-                            key={c}
-                            role="option"
-                            aria-selected={c === phoneCountry}
-                            onClick={() => {
-                              setPhoneCountry(c);
-                              setStep1((p) => ({ ...p, phone: "" }));
-                              setCountryOpen(false);
-                            }}
-                            className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-gray-100 ${
-                              c === phoneCountry ? "bg-gray-50" : ""
-                            }`}
-                          >
-                            <span className="inline-block w-6 h-4 overflow-hidden flex-shrink-0">
-                              {Flag
-                                ? React.createElement(Flag, {
-                                    title: en[c] ?? c,
-                                  })
-                                : null}
-                            </span>
-                            <span className="flex-1 truncate">{en[c] ?? c}</span>
-                            <span className="text-gray-500">
-                              +{getCountryCallingCode(c)}
-                            </span>
+                    <div className="absolute z-10 mt-1 w-72 rounded border border-gray-300 bg-white text-sm shadow-lg">
+                      <div className="border-b border-gray-200 p-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={countrySearch}
+                          onChange={(e) => setCountrySearch(e.target.value)}
+                          placeholder="Search countries…"
+                          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                        />
+                      </div>
+                      <ul role="listbox" className="max-h-64 overflow-auto py-1">
+                        {filteredCountries.map((c) => {
+                          const Flag = flags[c];
+                          return (
+                            <li
+                              key={c}
+                              role="option"
+                              aria-selected={c === phoneCountry}
+                              onClick={() => {
+                                setPhoneCountry(c);
+                                setStep1((p) => ({ ...p, phone: "" }));
+                                setCountryOpen(false);
+                              }}
+                              className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-gray-100 ${
+                                c === phoneCountry ? "bg-gray-50" : ""
+                              }`}
+                            >
+                              <span className="inline-block w-6 h-4 overflow-hidden flex-shrink-0">
+                                {Flag
+                                  ? React.createElement(Flag, {
+                                      title: en[c] ?? c,
+                                    })
+                                  : null}
+                              </span>
+                              <span className="flex-1 truncate">
+                                {en[c] ?? c}
+                              </span>
+                              <span className="text-gray-500">
+                                +{getCountryCallingCode(c)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {filteredCountries.length === 0 && (
+                          <li className="px-2 py-1.5 text-gray-400">
+                            No matches
                           </li>
-                        );
-                      })}
-                    </ul>
+                        )}
+                      </ul>
+                    </div>
                   )}
                 </div>
                 {(() => {
