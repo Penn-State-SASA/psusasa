@@ -11,7 +11,11 @@
       "Bash(npm uninstall *)",
       "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Select-Object ProcessName, Handles, CPU, Memory\")",
       "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; 'Server stopped'\")",
-      "Bash(Remove-Item \"c:\\\\Users\\\\Nihal K\\\\Documents\\\\SASAWebsite\\\\psusasa\\\\src\\\\app\\\\api\\\\create-checkout-session\\\\route.ts\" -Force)"
+      "Bash(Remove-Item \"c:\\\\Users\\\\Nihal K\\\\Documents\\\\SASAWebsite\\\\psusasa\\\\src\\\\app\\\\api\\\\create-checkout-session\\\\route.ts\" -Force)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(rm -f .git/COMMIT_EDITMSG_TMP)",
+      "Bash(git push *)"
     ]
   }
 }
