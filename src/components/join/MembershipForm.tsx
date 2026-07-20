@@ -983,7 +983,20 @@ export default function MembershipForm({ copy }: MembershipFormProps) {
                 onChange={(e) =>
                   setStep1((p) => ({ ...p, psuEmail: e.target.value }))
                 }
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
+                onBlur={() => {
+                  const trimmed = step1.psuEmail.trim();
+                  if (trimmed && !/^[^\s@]+@psu\.edu$/i.test(trimmed)) {
+                    setErrors((prev) => ({
+                      ...prev,
+                      psuEmail: t.step1.psuEmailDomain,
+                    }));
+                  }
+                }}
+                className={`w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                  errors.psuEmail
+                    ? "border-red-400 focus:border-red-500 focus:ring-red-500"
+                    : "border-gray-300 focus:border-sasa-red-900 focus:ring-sasa-red-900"
+                }`}
               />
               {errors.psuEmail && (
                 <p className="mt-1 text-xs text-red-500">{errors.psuEmail}</p>
