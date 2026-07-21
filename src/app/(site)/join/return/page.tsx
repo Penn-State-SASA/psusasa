@@ -118,9 +118,6 @@ export default async function JoinReturnPage({
     sanityFetchSingle<MembershipFormCopy>(membershipFormCopyQuery),
   ]);
 
-  const priceCents = formCopy?.priceCents ?? FALLBACK_PRICE_CENTS;
-  const priceDisplay = formatPrice(priceCents);
-
   // ---- No payment_intent in URL: direct-visit error state -----------------
   if (!paymentIntentId) {
     const errorHero = copy?.errorState?.heroTitle ?? FALLBACK_ERROR_HERO;
@@ -173,6 +170,12 @@ export default async function JoinReturnPage({
   const isComplete = paymentIntent?.status === "succeeded";
   const isTransferStudent =
     paymentIntent?.metadata?.membershipType === "transfer";
+
+  // Always show what Stripe actually charged for this payment, not the
+  // generic (legacy, often-stale) CMS fallback price.
+  const priceCents =
+    paymentIntent?.amount ?? formCopy?.priceCents ?? FALLBACK_PRICE_CENTS;
+  const priceDisplay = formatPrice(priceCents);
 
   if (isComplete && paymentIntent?.metadata) {
     try {
