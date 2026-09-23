@@ -136,6 +136,10 @@ export async function POST(req: NextRequest) {
       metadata,
       receipt_email: trimmedEmail,
       description: `SASA Tickets — ${order.event.title} (${order.ticketType.name})`,
+      // Lets Stripe surface every payment method enabled in the Dashboard
+      // (Apple Pay, Google Pay, etc.) inside the Payment Element on its
+      // own, instead of only ever offering a plain card field.
+      automatic_payment_methods: { enabled: true },
     });
 
     return NextResponse.json({
