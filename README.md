@@ -83,17 +83,67 @@ Open [http://localhost:3000](http://localhost:3000) for the website and [http://
 ### 4. Checks
 
 ```bash
-npm run lint       # next lint
-npm run typecheck  # tsc --noEmit
-npm test           # vitest
+npm run lint           # next lint
+npm run typecheck      # tsc --noEmit
+npm test               # vitest: unit, integration, and component tests (~3s, no network)
+npm run test:watch     # the same, re-running on save
+npm run test:coverage  # the same, plus a coverage report in coverage/index.html
+npm run test:e2e       # Playwright smoke tests in a real browser
 ```
 
-All three run on every pull request via [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Every pull request runs two jobs from [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+**check** (lint, typecheck, and `test:coverage`) and **e2e** (`next build`, then the
+Playwright suite). A failed E2E run uploads a Playwright report with traces as a build artifact.
 
-Tests cover the pure, money- and auth-affecting helpers in `src/lib` — the Stripe fee
-gross-up, the PSU-email rule, the ticket breakdown label, and check-in session signing.
-They need no API keys or network. Anything that talks to Stripe, Airtable, Sanity, or
-Resend is still verified by hand against the real services.
+#### What's tested where
+
+| Layer | Lives in | What it covers |
+|---|---|---|
+| Unit | `src/**/*.test.ts` next to the code | Pure helpers: fees, email rules, check-in money math, form helpers, session signing, the check-in middleware |
+| Integration | `route.test.ts` / `page.test.tsx` next to each API route and return page | Each route's real code path, with Stripe, Airtable, Sanity, Resend, and GroupMe mocked |
+| Component | `src/components/checkin/CheckinBoard.test.tsx` | The door check-in board, in a simulated browser (jsdom) |
+| E2E smoke | `e2e/*.spec.ts` | The built site in Chromium, desktop and phone-sized: pages load, 404, check-in gating, API input checks |
+
+Several tests exist because the bug they describe actually shipped once: untagged Stripe
+payments being filed as memberships, a member's single ticket shown as "non-member", and
+Resend failures that reported success. A comment in each of those tests names the bug.
+
+**Mocking rule for integration tests:** mock whole service modules (`@/lib/airtable`, the
+Sanity client, `@/lib/ticketEmail`, …) and let everything else run for real. Stripe is only
+partly mocked (see [`src/test/stripeMock.ts`](src/test/stripeMock.ts)): PaymentIntent calls
+are fakes, but webhook signature checks are real. Shared factories and request helpers are
+in [`src/test/`](src/test/).
+
+**Coverage floors:** `vitest.config.ts` sets minimum coverage for `src/lib`, `src/app/api`,
+the middleware, and the check-in board. CI fails if a change drops below them. Raise them
+as coverage improves, and don't lower them to get a PR through.
+
+#### Running the E2E tests locally
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e                  # starts `npm run dev` for you, or reuses one on :3000
+```
+
+The suite is **read-only by design**: every request in it is rejected before the app would
+write to Airtable or create a charge, so it's safe even with the real keys in `.env.local`.
+Keep it that way when adding tests. The check-in tests need `CHECKIN_SESSION_SECRET` set in
+`.env.local`. To run against a server that's already up somewhere, set
+`PLAYWRIGHT_BASE_URL`.
+
+#### What's still manual
+
+The real round-trip through Stripe, Airtable, Resend, and GroupMe (a card actually charged, a
+row actually written, an email actually delivered) isn't automated. After changing payment or
+check-in code, still test it by hand in Stripe test mode.
+
+#### GitHub settings (one-time, done in the GitHub UI)
+
+- **Settings → Branches:** protect `main` and require the `check` and `e2e` status checks, so
+  a red build can't be merged.
+- **Settings → Code security:** turn on Dependabot security updates. Routine dependency
+  updates arrive monthly, grouped, via [`.github/dependabot.yml`](.github/dependabot.yml).
+  Merge them once CI is green.
 
 ## Project Structure
 
@@ -146,8 +196,12 @@ src/
     airtable.ts    # Members + Tickets tables (Airtable REST API)
     ticketing.ts   # Shared ticket-order validation/pricing (used by both purchase routes)
     checkinAuth.ts # Door tool session signing (Web Crypto — Edge + Node compatible)
+    checkin.ts     # Door tool money math: amount still owed, when a cash order is paid
+    membershipForm.ts # Membership form helpers ("Other" answers, phone formatting)
     groupme.ts     # Auto-add member to GroupMe (+ admin email fallback)
+  test/            # Shared test helpers: factories, request builders, Stripe mock
 middleware.ts # Gates /checkin/[eventId] + /api/checkin/[eventId]/* per-event
+e2e/          # Playwright smoke tests (read-only)
 sanity/
   lib/
     client.ts   # Sanity client

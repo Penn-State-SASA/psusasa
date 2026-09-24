@@ -4,22 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
+import { amountOwedCents, checkinUpdates } from "@/lib/checkin";
 
 const POLL_INTERVAL_MS = 3000;
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-// A cash order's price isn't split per-ticket in Airtable (member/non-member
-// units can differ), so this is a proportional estimate of what's still
-// owed as a party partially checks in — not penny-exact, but good enough
-// for staff to know roughly what to ask for. Purely derived from check-in
-// progress: there's no separate "paid" toggle, checking someone in is the
-// only action, and un-checking them raises the owed amount right back up.
-function amountOwedCents(t: TicketRecord): number {
-  if (t.paymentMethod !== "Cash" || t.quantity <= 0) return 0;
-  return Math.round((t.amountPaidCents * (t.quantity - t.checkedInCount)) / t.quantity);
 }
 
 interface CheckinBoardProps {
@@ -104,24 +94,6 @@ export default function CheckinBoard({
     } finally {
       setPendingId(null);
     }
-  }
-
-  // Paid is fully derived from check-in progress on cash orders — no
-  // separate manual toggle. Written alongside checkedInCount on every
-  // change (either direction) purely so raw Airtable views/reports have a
-  // simple boolean to filter/sum by; the board itself only ever reads
-  // amountOwedCents, computed straight from the count.
-  function checkinUpdates(
-    ticket: TicketRecord,
-    nextCount: number
-  ): { checkedInCount: number; paid?: boolean } {
-    const updates: { checkedInCount: number; paid?: boolean } = {
-      checkedInCount: nextCount,
-    };
-    if (ticket.paymentMethod === "Cash") {
-      updates.paid = nextCount >= ticket.quantity;
-    }
-    return updates;
   }
 
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
