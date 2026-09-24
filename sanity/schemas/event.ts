@@ -126,7 +126,8 @@ export default defineType({
             {
               name: "capacity",
               title: "Capacity",
-              description: "Max tickets of this type. Leave blank for unlimited.",
+              description:
+                "Max tickets of this type. Leave blank for unlimited. Unpaid cash-at-the-door orders don't count toward this.",
               type: "number",
               validation: (Rule) => Rule.integer().min(1),
             },

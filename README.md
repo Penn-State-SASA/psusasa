@@ -262,7 +262,7 @@ Replaces Doorlist. Current SASA members automatically get a cheaper (or free) pr
 3. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
 4. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
 
-Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which reserves their spot and shows as due on the check-in board.
+Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which puts them on the door list and shows as due on the check-in board. Unpaid cash orders don't count toward a ticket type's capacity (entry isn't guaranteed); they count once the door marks them paid.
 
 **Running the door on event night:**
 

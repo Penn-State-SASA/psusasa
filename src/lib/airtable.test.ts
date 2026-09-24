@@ -130,10 +130,13 @@ describe("sumSoldTicketQuantity", () => {
     expect(new URL(String(fetchMock.mock.calls[2][0])).searchParams.get("offset")).toBe("page3");
   });
 
-  it("filters by both event and ticket type", async () => {
+  it("filters by event, ticket type, and paid status", async () => {
+    // Unpaid cash orders are unguaranteed and mustn't use up capacity.
     fetchMock.mockResolvedValue(json({ records: [] }));
     await sumSoldTicketQuantity("event-1", "ga");
-    expect(formulaOfCall()).toBe("AND({Event ID} = 'event-1', {Ticket Type Key} = 'ga')");
+    expect(formulaOfCall()).toBe(
+      "AND({Event ID} = 'event-1', {Ticket Type Key} = 'ga', {Paid} = TRUE())"
+    );
   });
 
   it("ignores rows with a missing or non-numeric quantity", async () => {

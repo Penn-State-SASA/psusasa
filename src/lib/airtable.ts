@@ -270,13 +270,14 @@ async function sumTicketQuantity(formula: string): Promise<number> {
   }, 0);
 }
 
-// Counts every order for this ticket type regardless of Paid status — an
-// unpaid cash order still reserves a capacity slot the moment it's placed.
+// Counts only paid orders (card, free, board plus-one, or cash collected at
+// the door) — an unpaid cash order is unguaranteed and doesn't hold a
+// capacity slot until the door marks it paid.
 export async function sumSoldTicketQuantity(
   eventId: string,
   ticketTypeKey: string
 ): Promise<number> {
-  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${escapeForAirtableFormula(ticketTypeKey)}')`;
+  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${escapeForAirtableFormula(ticketTypeKey)}', {Paid} = TRUE())`;
   return sumTicketQuantity(formula);
 }
 
