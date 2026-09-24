@@ -3,7 +3,7 @@ import Link from "next/link";
 import Stripe from "stripe";
 import { appendTicketToAirtable } from "@/lib/airtable";
 import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
-import { breakdownLabel } from "@/lib/ticketLabels";
+import { breakdownLabel, splitFromMetadata } from "@/lib/ticketLabels";
 
 export const metadata: Metadata = {
   title: "Tickets | SASA at Penn State",
@@ -49,12 +49,7 @@ export default async function TicketsReturnPage({
   const eventName = m.eventName ?? "your event";
   const ticketTypeName = m.ticketTypeName ?? "Ticket";
   const quantity = Number(m.quantity) || 1;
-  // "0" is falsy, so presence has to be tested before defaulting — a member
-  // buying a single ticket sends nonMemberUnits="0", which must not fall back
-  // to `quantity` and claim a non-member ticket that was never charged.
-  const hasSplit = m.memberUnits !== undefined || m.nonMemberUnits !== undefined;
-  const memberUnits = hasSplit ? Number(m.memberUnits) || 0 : 0;
-  const nonMemberUnits = hasSplit ? Number(m.nonMemberUnits) || 0 : quantity;
+  const { memberUnits, nonMemberUnits } = splitFromMetadata(m, quantity);
   const priceLabel = breakdownLabel(memberUnits, nonMemberUnits);
 
   // Requires the ticket tag, not just any succeeded payment — the id comes

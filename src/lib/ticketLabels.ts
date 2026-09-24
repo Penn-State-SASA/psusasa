@@ -14,3 +14,20 @@ export function breakdownLabel(
   }
   return parts.join(" + ");
 }
+
+// Reads the member/non-member seat split back off a ticket PaymentIntent's
+// metadata. "0" is falsy, so presence has to be tested before defaulting —
+// a member buying a single ticket sends nonMemberUnits="0", which must not
+// fall back to `quantity` and claim a non-member ticket that was never
+// charged. Metadata from before the split was recorded has neither field;
+// every seat in those orders was non-member priced.
+export function splitFromMetadata(
+  m: Record<string, string>,
+  quantity: number
+): { memberUnits: number; nonMemberUnits: number } {
+  const hasSplit = m.memberUnits !== undefined || m.nonMemberUnits !== undefined;
+  return {
+    memberUnits: hasSplit ? Number(m.memberUnits) || 0 : 0,
+    nonMemberUnits: hasSplit ? Number(m.nonMemberUnits) || 0 : quantity,
+  };
+}

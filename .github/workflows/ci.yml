@@ -10,9 +10,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   check:
+    name: Lint, typecheck, unit + integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -27,4 +32,64 @@ jobs:
 
       - run: npm run typecheck
 
-      - run: npm test
+      # Also fails if coverage of the money and door-access code drops below
+      # the floors in vitest.config.ts.
+      - run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  e2e:
+    name: Build + E2E smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Placeholders, not secrets. With no Sanity project configured the site
+    # renders its built-in fallback copy, and nothing in the smoke suite gets
+    # far enough to call Stripe, Airtable, or Resend.
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      STRIPE_SECRET_KEY: sk_test_ci_placeholder
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+      SANITY_REVALIDATE_SECRET: ci-placeholder
+      CHECKIN_SESSION_SECRET: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'sanity/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+
+      # Vercel builds too, but only this catches a build break before merge
+      # alongside the tests that exercise the built app.
+      - run: npm run build
+
+      # Browsers aren't cached: per Playwright's CI docs, restoring them takes
+      # about as long as downloading, and the OS dependencies can't be cached.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
