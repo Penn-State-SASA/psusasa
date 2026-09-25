@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
+import {
+  isFormerBoardTicket,
+  isFormerBoardVirtualId,
+  rosterKeyFromVirtualId,
+} from "@/lib/formerBoard";
 import { amountOwedCents, checkinUpdates } from "@/lib/checkin";
 
 const POLL_INTERVAL_MS = 3000;
@@ -96,11 +101,43 @@ export default function CheckinBoard({
     }
   }
 
+  // A former board member's placeholder row has no Airtable record yet —
+  // checking them in creates it (already checked in) via its own route.
+  async function checkInFormerBoard(ticket: TicketRecord) {
+    setPendingId(ticket.id);
+    setError(null);
+    setTickets((prev) =>
+      prev.map((t): TicketRecord => (t.id === ticket.id ? { ...t, checkedInCount: 1 } : t))
+    );
+    try {
+      const res = await fetch(`/api/checkin/${eventId}/former-board`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rosterKey: rosterKeyFromVirtualId(ticket.id) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to update.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update.");
+    } finally {
+      // Swap the placeholder for the real row (or roll back on failure).
+      await refetch();
+      setPendingId(null);
+    }
+  }
+
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
   // in (not un-checking) a cash order that still owes something routes
   // through the collect-cash confirmation first, so staff always see the
   // amount before it counts as checked in.
   function handleTap(ticket: TicketRecord) {
+    if (isFormerBoardVirtualId(ticket.id)) {
+      // Only ever shown un-checked-in — once checked in it's a real row.
+      if (ticket.checkedInCount === 0) checkInFormerBoard(ticket);
+      return;
+    }
     if (ticket.checkedInCount > 0) {
       sendMark(ticket.id, checkinUpdates(ticket, 0));
       return;
@@ -211,11 +248,20 @@ export default function CheckinBoard({
     let memberSold = 0;
     let nonMemberSold = 0;
     let cashOutstandingCents = 0;
+    let formerBoardTotal = 0;
+    let formerBoardCheckedIn = 0;
     const byType = new Map<string, { sold: number; checkedIn: number }>();
 
     for (const t of tickets) {
-      totalSold += t.quantity;
+      // Checked In is the headcount through the door, comps included.
       totalCheckedIn += t.checkedInCount;
+      // Former board are comped guests, not sales — tallied on their own.
+      if (isFormerBoardTicket(t)) {
+        formerBoardTotal += t.quantity;
+        formerBoardCheckedIn += t.checkedInCount;
+        continue;
+      }
+      totalSold += t.quantity;
       if (t.isMember) memberSold += t.quantity;
       else nonMemberSold += t.quantity;
       cashOutstandingCents += amountOwedCents(t);
@@ -232,6 +278,8 @@ export default function CheckinBoard({
       memberSold,
       nonMemberSold,
       cashOutstandingCents,
+      formerBoardTotal,
+      formerBoardCheckedIn,
       byType: Array.from(byType.entries()),
     };
   }, [tickets]);
@@ -242,11 +290,17 @@ export default function CheckinBoard({
         <h1 className="font-heading text-lg font-semibold text-sasa-red-900">
           {eventTitle}
         </h1>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Tickets Sold" value={String(stats.totalSold)} />
           <Stat label="Checked In" value={String(stats.totalCheckedIn)} />
           <Stat label="Members" value={String(stats.memberSold)} />
           <Stat label="Non-Members" value={String(stats.nonMemberSold)} />
+          {stats.formerBoardTotal > 0 && (
+            <Stat
+              label="Former Board"
+              value={`${stats.formerBoardCheckedIn} / ${stats.formerBoardTotal}`}
+            />
+          )}
           <Stat
             label="Cash Outstanding"
             value={formatPrice(stats.cashOutstandingCents)}
@@ -300,6 +354,7 @@ export default function CheckinBoard({
           const isSingle = t.quantity === 1;
           const fullyCheckedIn = t.checkedInCount >= t.quantity;
           const partiallyCheckedIn = t.checkedInCount > 0 && !fullyCheckedIn;
+          const formerBoard = isFormerBoardTicket(t);
 
           return (
             <div
@@ -334,16 +389,20 @@ export default function CheckinBoard({
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      t.isMember
-                        ? "bg-sasa-forest/10 text-sasa-forest"
-                        : "bg-gray-100 text-sasa-neutral-500"
+                      formerBoard
+                        ? "bg-sasa-gold-400/20 text-sasa-red-900"
+                        : t.isMember
+                          ? "bg-sasa-forest/10 text-sasa-forest"
+                          : "bg-gray-100 text-sasa-neutral-500"
                     }`}
                   >
-                    {t.isMember
-                      ? t.memberYear
-                        ? `Member · ${t.memberYear}`
-                        : "Member"
-                      : "Non-Member"}
+                    {formerBoard
+                      ? "Former Board"
+                      : t.isMember
+                        ? t.memberYear
+                          ? `Member · ${t.memberYear}`
+                          : "Member"
+                        : "Non-Member"}
                   </span>
                   {owedCents > 0 && (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
@@ -352,7 +411,7 @@ export default function CheckinBoard({
                   )}
                 </div>
                 <div className="mt-0.5 text-xs text-sasa-neutral-500">
-                  {t.quantity}x {t.ticketTypeName}
+                  {formerBoard ? "Free entry" : `${t.quantity}x ${t.ticketTypeName}`}
                   {t.contactEmail ? ` · ${t.contactEmail}` : ""}
                 </div>
               </div>

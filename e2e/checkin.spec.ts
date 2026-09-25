@@ -40,3 +40,11 @@ test("the board's API refuses a signed-out caller", async ({ request }) => {
   expect(res.status()).toBe(401);
   expect(await res.json()).toEqual({ error: "Not authorized" });
 });
+
+test("the former board check-in refuses a signed-out caller", async ({ request }) => {
+  const res = await request.post(`/api/checkin/${EVENT}/former-board`, {
+    data: { rosterKey: "om-makwana" },
+  });
+  expect(res.status()).toBe(401);
+  expect(await res.json()).toEqual({ error: "Not authorized" });
+});

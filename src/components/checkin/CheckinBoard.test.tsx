@@ -6,7 +6,8 @@ import CheckinBoard from "@/components/checkin/CheckinBoard";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
-import { makeTicketRecord } from "@/test/factories";
+import { FORMER_BOARD_TICKET_TYPE_KEY, mergeFormerBoardGuests } from "@/lib/formerBoard";
+import { makeFormerBoardMember, makeTicketRecord } from "@/test/factories";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -332,5 +333,114 @@ describe("CheckinBoard — header stats", () => {
     expect(stat("Non-Members")).toBe("4");
     // Dev owes $15, Meera's party owes 2/3 of $45.
     expect(stat("Cash Outstanding")).toBe("$45.00");
+  });
+});
+
+describe("CheckinBoard — former board", () => {
+  const omPlaceholder = mergeFormerBoardGuests([], [makeFormerBoardMember()])[0];
+  const omCheckedIn = makeTicketRecord({
+    id: "rec-om",
+    firstName: "Om",
+    lastName: "Makwana",
+    contactEmail: "",
+    ticketTypeKey: FORMER_BOARD_TICKET_TYPE_KEY,
+    ticketTypeName: "Former Board",
+    amountPaidCents: 0,
+    checkedInCount: 1,
+  });
+
+  it("tags them Former Board instead of Member or Non-Member", () => {
+    renderBoard([omPlaceholder]);
+    const omRow = row(/Om Makwana/);
+    expect(within(omRow).getByText("Former Board")).toBeInTheDocument();
+    expect(within(omRow).getByText("Free entry")).toBeInTheDocument();
+    expect(within(omRow).queryByText("Non-Member")).not.toBeInTheDocument();
+  });
+
+  it("checks in their placeholder through the former-board route, then shows the real row", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, omPlaceholder]);
+    serverTickets = [asha, omCheckedIn];
+
+    await user.click(row(/Om Makwana/));
+
+    expect(sent("/former-board")).toEqual([{ rosterKey: "om-makwana" }]);
+    expect(sent("/mark")).toEqual([]);
+    // No cash prompt — it's a comp.
+    expect(screen.queryByRole("heading", { name: "Collect cash" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(row(/Om Makwana/)).getByText("Checked In ✓")).toBeInTheDocument()
+    );
+    await waitFor(() => expect(row(/Om Makwana/)).not.toHaveClass("opacity-50"));
+  });
+
+  it("undoes a former board check-in through the regular mark route", async () => {
+    const user = userEvent.setup();
+    renderBoard([omCheckedIn]);
+
+    await user.click(row(/Om Makwana/));
+
+    expect(sent("/mark")).toEqual([{ recordId: "rec-om", checkedInCount: 0 }]);
+    expect(sent("/former-board")).toEqual([]);
+  });
+
+  it("shows the error and rolls back when the check-in is refused", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input).endsWith("/former-board")
+        ? respond({ error: "Om Makwana isn't on the free list for this event." }, 400)
+        : respond({ tickets: serverTickets })
+    );
+    const user = userEvent.setup();
+    renderBoard([omPlaceholder]);
+
+    await user.click(row(/Om Makwana/));
+
+    expect(
+      await screen.findByText("Om Makwana isn't on the free list for this event.")
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(row(/Om Makwana/)).getByText("Check In")).toBeInTheDocument()
+    );
+  });
+
+  it("falls back to a generic error when the server gives no reason", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input).endsWith("/former-board")
+        ? new Response("oops", { status: 500 })
+        : respond({ tickets: serverTickets })
+    );
+    const user = userEvent.setup();
+    renderBoard([omPlaceholder]);
+
+    await user.click(row(/Om Makwana/));
+
+    expect(await screen.findByText("Failed to update.")).toBeInTheDocument();
+  });
+
+  it("keeps comps out of the sales numbers but counts them through the door", () => {
+    renderBoard([
+      { ...asha, isMember: true, checkedInCount: 1 },
+      dev,
+      omCheckedIn,
+      mergeFormerBoardGuests(
+        [],
+        [makeFormerBoardMember({ _key: "jay-patel", firstName: "Jay", lastName: "Patel" })]
+      )[0],
+    ]);
+    // "Former Board" is also every comp's badge — the stat label is the <p>.
+    const stat = (label: string) =>
+      screen.getAllByText(label).find((el) => el.tagName === "P")?.nextElementSibling
+        ?.textContent;
+
+    expect(stat("Tickets Sold")).toBe("2");
+    expect(stat("Members")).toBe("1");
+    expect(stat("Non-Members")).toBe("1");
+    expect(stat("Checked In")).toBe("2");
+    expect(stat("Former Board")).toBe("1 / 2");
+  });
+
+  it("has no Former Board stat when no one is comped", () => {
+    renderBoard([asha]);
+    expect(screen.queryByText("Former Board")).not.toBeInTheDocument();
   });
 });

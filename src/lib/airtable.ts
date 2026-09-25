@@ -262,6 +262,68 @@ export async function appendTicketToAirtable(
   return { inserted: true };
 }
 
+export interface FormerBoardCheckin {
+  eventId: string;
+  eventName: string;
+  rosterKey: string;
+  firstName: string;
+  lastName: string;
+  ticketTypeKey: string;
+  ticketTypeName: string;
+}
+
+// Creates a former board member's comped row, already checked in, the
+// first time the door checks them in. Several door devices can tap the same
+// person within moments of each other, so this is an atomic upsert rather
+// than look-up-then-insert. The Tickets table has no dedicated external-id
+// column, so the merge key rides in "Stripe Payment Intent ID" — the one
+// column upserts already match on. The "former-board:" prefix keeps it
+// clearly apart from real Stripe ids ("pi_…"), and it's scoped to the event
+// so the same person gets one row per event.
+export async function upsertFormerBoardCheckin(
+  guest: FormerBoardCheckin
+): Promise<void> {
+  const now = new Date().toISOString();
+  const fields = {
+    Timestamp: now,
+    "First Name": guest.firstName,
+    "Last Name": guest.lastName,
+    "Contact Email": "",
+    "PSU Email": "",
+    "Is Member": false,
+    "Member Year": "",
+    "Event ID": guest.eventId,
+    "Event Name": guest.eventName,
+    "Ticket Type Key": guest.ticketTypeKey,
+    "Ticket Type Name": guest.ticketTypeName,
+    Quantity: 1,
+    "Amount Paid": 0,
+    "Payment Method": "Card",
+    Paid: true,
+    "Stripe Payment Intent ID": `former-board:${guest.eventId}:${guest.rosterKey}`,
+    "Checked In Count": 1,
+    "Checked In At": now,
+    "Board Member": "",
+  };
+
+  const res = await fetch(ticketsBaseUrl(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      performUpsert: { fieldsToMergeOn: ["Stripe Payment Intent ID"] },
+      records: [{ fields }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+}
+
 async function sumTicketQuantity(formula: string): Promise<number> {
   const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
   return records.reduce((sum, r) => {
