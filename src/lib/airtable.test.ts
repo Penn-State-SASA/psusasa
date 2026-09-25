@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  appendAtDoorSale,
   appendMemberToAirtable,
   appendTicketToAirtable,
+  deleteLatestAtDoorSale,
   getTicketRecordInfo,
   hasUsedMemberPricing,
   listTicketsForEvent,
   lookupCurrentMember,
-  sumSoldTicketQuantity,
+  sumCapacityUsed,
   updateTicketCheckinState,
   upsertFormerBoardCheckin,
   type TicketOrderMetadata,
@@ -114,7 +116,7 @@ describe("lookupCurrentMember", () => {
   });
 });
 
-describe("sumSoldTicketQuantity", () => {
+describe("sumCapacityUsed", () => {
   it("follows Airtable's offset cursor past the 100-record page limit", async () => {
     fetchMock
       .mockResolvedValueOnce(
@@ -125,18 +127,20 @@ describe("sumSoldTicketQuantity", () => {
       )
       .mockResolvedValueOnce(json({ records: [{ id: "c", fields: { Quantity: 1 } }] }));
 
-    expect(await sumSoldTicketQuantity("event-1", "ga")).toBe(6);
+    expect(await sumCapacityUsed("event-1")).toBe(6);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get("offset")).toBe("page2");
     expect(new URL(String(fetchMock.mock.calls[2][0])).searchParams.get("offset")).toBe("page3");
   });
 
-  it("filters by event, ticket type, and paid status", async () => {
-    // Unpaid cash orders are unguaranteed and mustn't use up capacity.
+  it("counts every paid row for the event except former board", async () => {
+    // Capacity is event-wide: every ticket type, board +1s and at-door
+    // sales count. Unpaid cash orders are unguaranteed and former board
+    // are comped extras, so neither uses up capacity.
     fetchMock.mockResolvedValue(json({ records: [] }));
-    await sumSoldTicketQuantity("event-1", "ga");
+    await sumCapacityUsed("event-1");
     expect(formulaOfCall()).toBe(
-      "AND({Event ID} = 'event-1', {Ticket Type Key} = 'ga', {Paid} = TRUE())"
+      "AND({Event ID} = 'event-1', {Paid} = TRUE(), {Ticket Type Key} != 'former-board')"
     );
   });
 
@@ -150,13 +154,79 @@ describe("sumSoldTicketQuantity", () => {
         ],
       })
     );
-    expect(await sumSoldTicketQuantity("event-1", "ga")).toBe(2);
+    expect(await sumCapacityUsed("event-1")).toBe(2);
   });
 
   it("throws rather than under-counting when Airtable errors", async () => {
     // Capacity checks must fail closed; returning 0 would oversell.
     fetchMock.mockResolvedValue(json({ error: "SERVER_ERROR" }, 500));
-    await expect(sumSoldTicketQuantity("event-1", "ga")).rejects.toThrow(/Airtable list error: 500/);
+    await expect(sumCapacityUsed("event-1")).rejects.toThrow(/Airtable list error: 500/);
+  });
+});
+
+describe("appendAtDoorSale", () => {
+  it("inserts one nameless row that's already paid and checked in", async () => {
+    fetchMock.mockResolvedValue(json({ id: "rec1", fields: {} }));
+    await appendAtDoorSale({ eventId: "event-1", eventName: "Diwali Night", amountCents: 1500 });
+
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    const fields = (bodyOfCall() as { fields: Record<string, unknown> }).fields;
+    expect(fields).toMatchObject({
+      "First Name": "At-Door Sale",
+      "Last Name": "",
+      "Event ID": "event-1",
+      "Event Name": "Diwali Night",
+      "Ticket Type Key": "at-door",
+      "Ticket Type Name": "At-Door Sale",
+      "Is Member": false,
+      Quantity: 1,
+      "Amount Paid": 15,
+      "Payment Method": "At Door",
+      Paid: true,
+      "Checked In Count": 1,
+    });
+    expect(typeof fields["Checked In At"]).toBe("string");
+  });
+
+  it("throws when Airtable rejects the write", async () => {
+    fetchMock.mockResolvedValue(json({ error: "INVALID_VALUE" }, 422));
+    await expect(
+      appendAtDoorSale({ eventId: "event-1", eventName: "Diwali Night", amountCents: 0 })
+    ).rejects.toThrow(/Airtable error: 422/);
+  });
+});
+
+describe("deleteLatestAtDoorSale", () => {
+  it("deletes the event's most recent at-door sale", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        json({
+          records: [
+            { id: "recOld", fields: { Timestamp: "2026-09-25T20:00:00.000Z" } },
+            { id: "recNew", fields: { Timestamp: "2026-09-25T21:30:00.000Z" } },
+            { id: "recMid", fields: { Timestamp: "2026-09-25T21:00:00.000Z" } },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(json({ id: "recNew", deleted: true }));
+
+    expect(await deleteLatestAtDoorSale("event-1")).toBe(true);
+    expect(formulaOfCall()).toBe("AND({Event ID} = 'event-1', {Ticket Type Key} = 'at-door')");
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/recNew$/);
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("DELETE");
+  });
+
+  it("returns false without deleting when there are none", async () => {
+    fetchMock.mockResolvedValue(json({ records: [] }));
+    expect(await deleteLatestAtDoorSale("event-1")).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when Airtable rejects the delete", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ records: [{ id: "rec1", fields: {} }] }))
+      .mockResolvedValueOnce(json({ error: "NOT_FOUND" }, 404));
+    await expect(deleteLatestAtDoorSale("event-1")).rejects.toThrow(/Airtable error: 404/);
   });
 });
 
@@ -316,6 +386,14 @@ describe("listTicketsForEvent", () => {
       memberYear: null,
       boardMemberName: "Ravi Shah",
     });
+  });
+
+  it("keeps the At Door payment method", async () => {
+    fetchMock.mockResolvedValue(
+      json({ records: [{ id: "rec3", fields: { "Payment Method": "At Door" } }] })
+    );
+    const [t] = await listTicketsForEvent("event-1");
+    expect(t.paymentMethod).toBe("At Door");
   });
 
   it("fills sensible defaults for a sparse row", async () => {

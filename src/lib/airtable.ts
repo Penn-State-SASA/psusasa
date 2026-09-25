@@ -1,3 +1,6 @@
+import { AT_DOOR_TICKET_TYPE_KEY, AT_DOOR_TICKET_TYPE_NAME } from "@/lib/atDoor";
+import { FORMER_BOARD_TICKET_TYPE_KEY } from "@/lib/formerBoard";
+
 function escapeForAirtableFormula(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -332,15 +335,86 @@ async function sumTicketQuantity(formula: string): Promise<number> {
   }, 0);
 }
 
-// Counts only paid orders (card, free, board plus-one, or cash collected at
-// the door) — an unpaid cash order is unguaranteed and doesn't hold a
-// capacity slot until the door marks it paid.
-export async function sumSoldTicketQuantity(
-  eventId: string,
-  ticketTypeKey: string
-): Promise<number> {
-  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${escapeForAirtableFormula(ticketTypeKey)}', {Paid} = TRUE())`;
+// How many of the event's capacity slots are taken, across every ticket
+// type. Counts only paid rows (card, free, board plus-one, at-door sales, or
+// cash collected at the door) — an unpaid cash order is unguaranteed and
+// doesn't hold a slot until the door marks it paid. Former board guests are
+// comped extras and never count.
+export async function sumCapacityUsed(eventId: string): Promise<number> {
+  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Paid} = TRUE(), {Ticket Type Key} != '${FORMER_BOARD_TICKET_TYPE_KEY}')`;
   return sumTicketQuantity(formula);
+}
+
+export interface AtDoorSale {
+  eventId: string;
+  eventName: string;
+  amountCents: number;
+}
+
+// One walk-up sale tapped in on the check-in board: a nameless row that's
+// already paid and checked in. Each tap is its own row (rather than a
+// counter on one row) so several door devices can add sales at once
+// without overwriting each other.
+export async function appendAtDoorSale(sale: AtDoorSale): Promise<void> {
+  const now = new Date().toISOString();
+  const fields = {
+    Timestamp: now,
+    "First Name": AT_DOOR_TICKET_TYPE_NAME,
+    "Last Name": "",
+    "Contact Email": "",
+    "PSU Email": "",
+    "Is Member": false,
+    "Member Year": "",
+    "Event ID": sale.eventId,
+    "Event Name": sale.eventName,
+    "Ticket Type Key": AT_DOOR_TICKET_TYPE_KEY,
+    "Ticket Type Name": AT_DOOR_TICKET_TYPE_NAME,
+    Quantity: 1,
+    "Amount Paid": sale.amountCents / 100,
+    "Payment Method": "At Door",
+    Paid: true,
+    "Stripe Payment Intent ID": "",
+    "Checked In Count": 1,
+    "Checked In At": now,
+    "Board Member": "",
+  };
+
+  const res = await fetch(ticketsBaseUrl(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fields }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+}
+
+// Undo for a mis-tapped at-door sale: deletes the event's most recent one.
+// Returns false if there were none left to delete.
+export async function deleteLatestAtDoorSale(eventId: string): Promise<boolean> {
+  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${AT_DOOR_TICKET_TYPE_KEY}')`;
+  const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
+  if (records.length === 0) return false;
+
+  const latest = records.reduce((a, b) =>
+    String(b.fields["Timestamp"] ?? "") > String(a.fields["Timestamp"] ?? "") ? b : a
+  );
+
+  const res = await fetch(`${ticketsBaseUrl()}/${latest.id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+  return true;
 }
 
 // A person gets member pricing on at most 1 ticket per event, ever —
@@ -372,7 +446,7 @@ export interface TicketRecord {
   ticketTypeName: string;
   quantity: number;
   amountPaidCents: number;
-  paymentMethod: "Card" | "Cash";
+  paymentMethod: "Card" | "Cash" | "At Door";
   paid: boolean;
   /** How many of this order's `quantity` seats have been checked in — 0 to quantity. */
   checkedInCount: number;
@@ -388,8 +462,12 @@ export async function listTicketsForEvent(
 
   return records.map((r): TicketRecord => {
     const f = r.fields;
-    const paymentMethod: "Card" | "Cash" =
-      f["Payment Method"] === "Cash" ? "Cash" : "Card";
+    const paymentMethod: TicketRecord["paymentMethod"] =
+      f["Payment Method"] === "Cash"
+        ? "Cash"
+        : f["Payment Method"] === "At Door"
+          ? "At Door"
+          : "Card";
     return {
       id: r.id,
       firstName: String(f["First Name"] ?? ""),

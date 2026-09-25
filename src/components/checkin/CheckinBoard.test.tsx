@@ -6,6 +6,7 @@ import CheckinBoard from "@/components/checkin/CheckinBoard";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
+import { AT_DOOR_TICKET_TYPE_KEY, AT_DOOR_TICKET_TYPE_NAME } from "@/lib/atDoor";
 import { FORMER_BOARD_TICKET_TYPE_KEY, mergeFormerBoardGuests } from "@/lib/formerBoard";
 import { makeFormerBoardMember, makeTicketRecord } from "@/test/factories";
 
@@ -61,7 +62,7 @@ const boardMembers: BoardMemberPickerEntry[] = [
 
 function renderBoard(
   tickets: TicketRecord[],
-  extra: { boardPlusOneEnabled?: boolean } = {}
+  extra: { boardPlusOneEnabled?: boolean; capacity?: number | null } = {}
 ) {
   serverTickets = tickets;
   return render(
@@ -71,6 +72,7 @@ function renderBoard(
       initialTickets={tickets}
       boardPlusOneEnabled={extra.boardPlusOneEnabled ?? false}
       boardMembers={boardMembers}
+      capacity={extra.capacity ?? null}
     />
   );
 }
@@ -335,12 +337,15 @@ describe("CheckinBoard — multi-ticket orders", () => {
     const minus = screen.getByRole("button", { name: "Decrease checked-in count" });
     const plus = screen.getByRole("button", { name: "Increase checked-in count" });
 
+    // The row's own counter — the header's Non-Members stat reads the same.
+    const counter = () => plus.previousElementSibling;
+
     expect(minus).toBeDisabled();
     await user.click(plus);
-    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(counter()).toHaveTextContent("1 / 3");
     await waitFor(() => expect(minus).toBeEnabled());
     await user.click(minus);
-    expect(screen.getByText("0 / 3")).toBeInTheDocument();
+    expect(counter()).toHaveTextContent("0 / 3");
 
     expect(sent("/mark")).toEqual([
       { recordId: "rec-party", checkedInCount: 1 },
@@ -455,8 +460,8 @@ describe("CheckinBoard — header stats", () => {
 
     expect(stat("Tickets Sold")).toBe("5");
     expect(stat("Checked In")).toBe("2");
-    expect(stat("Members")).toBe("1");
-    expect(stat("Non-Members")).toBe("4");
+    expect(stat("Members")).toBe("1 / 1");
+    expect(stat("Non-Members")).toBe("1 / 4");
     // Dev owes $15, Meera's party owes 2/3 of $45.
     expect(stat("Cash Outstanding")).toBe("$45.00");
   });
@@ -559,8 +564,8 @@ describe("CheckinBoard — former board", () => {
         ?.textContent;
 
     expect(stat("Tickets Sold")).toBe("2");
-    expect(stat("Members")).toBe("1");
-    expect(stat("Non-Members")).toBe("1");
+    expect(stat("Members")).toBe("1 / 1");
+    expect(stat("Non-Members")).toBe("0 / 1");
     expect(stat("Checked In")).toBe("2");
     expect(stat("Former Board")).toBe("1 / 2");
   });
@@ -568,5 +573,173 @@ describe("CheckinBoard — former board", () => {
   it("has no Former Board stat when no one is comped", () => {
     renderBoard([asha]);
     expect(screen.queryByText("Former Board")).not.toBeInTheDocument();
+  });
+});
+
+/** The value under a header stat's label. */
+function stat(label: string) {
+  return screen.getAllByText(label).find((el) => el.tagName === "P")?.nextElementSibling
+    ?.textContent;
+}
+
+function atDoorSale(id: string): TicketRecord {
+  return makeTicketRecord({
+    id,
+    firstName: AT_DOOR_TICKET_TYPE_NAME,
+    lastName: "",
+    contactEmail: "",
+    ticketTypeKey: AT_DOOR_TICKET_TYPE_KEY,
+    ticketTypeName: AT_DOOR_TICKET_TYPE_NAME,
+    paymentMethod: "At Door",
+    checkedInCount: 1,
+  });
+}
+
+/** How many requests of the given method went to the at-door route. */
+function atDoorCalls(method: "POST" | "DELETE"): number {
+  return fetchMock.mock.calls.filter(
+    ([url, init]) => String(url).endsWith("/at-door") && init?.method === method
+  ).length;
+}
+
+describe("CheckinBoard — checked-in breakdown", () => {
+  it("counts only the buyer's own seat on a member order as a member", () => {
+    renderBoard([{ ...party, isMember: true, checkedInCount: 0 }]);
+    expect(stat("Members")).toBe("0 / 1");
+    expect(stat("Non-Members")).toBe("0 / 2");
+  });
+
+  it("counts the first one in on a member order as the member", () => {
+    renderBoard([{ ...party, isMember: true, checkedInCount: 1 }]);
+    expect(stat("Members")).toBe("1 / 1");
+    expect(stat("Non-Members")).toBe("0 / 2");
+  });
+
+  it("counts the rest of a member's party as non-members", () => {
+    renderBoard([{ ...party, isMember: true, checkedInCount: 2 }]);
+    expect(stat("Members")).toBe("1 / 1");
+    expect(stat("Non-Members")).toBe("1 / 2");
+  });
+
+  it("counts board +1 guests on their own, not as non-members", () => {
+    renderBoard(
+      [
+        asha,
+        makeTicketRecord({
+          id: "rec-guest",
+          firstName: "Tara",
+          lastName: "Singh",
+          ticketTypeKey: BOARD_PLUS_ONE_TICKET_TYPE_KEY,
+          ticketTypeName: "Guest of Ravi Shah",
+          boardMemberName: "Ravi Shah",
+          amountPaidCents: 0,
+          checkedInCount: 1,
+        }),
+      ],
+      { boardPlusOneEnabled: true }
+    );
+    expect(stat("Board +1")).toBe("1 / 1");
+    expect(stat("Non-Members")).toBe("0 / 1");
+  });
+
+  it("shows an empty Board +1 count when the event allows +1s", () => {
+    renderBoard([asha], { boardPlusOneEnabled: true });
+    expect(stat("Board +1")).toBe("0 / 0");
+  });
+
+  it("has no Board +1 stat when the event doesn't allow +1s and has none", () => {
+    renderBoard([asha]);
+    expect(screen.queryByText("Board +1")).not.toBeInTheDocument();
+  });
+});
+
+describe("CheckinBoard — capacity", () => {
+  it("counts paid seats, board +1s and at-door sales, but not unpaid cash or former board", () => {
+    renderBoard(
+      [
+        asha,
+        dev, // unpaid cash
+        makeTicketRecord({
+          id: "rec-guest",
+          ticketTypeKey: BOARD_PLUS_ONE_TICKET_TYPE_KEY,
+          ticketTypeName: "Guest of Ravi Shah",
+        }),
+        makeTicketRecord({ id: "rec-om", ticketTypeKey: FORMER_BOARD_TICKET_TYPE_KEY }),
+        atDoorSale("rec-door-1"),
+      ],
+      { capacity: 50 }
+    );
+    expect(stat("Capacity")).toBe("3 / 50");
+  });
+
+  it("has no Capacity stat when the event has no limit", () => {
+    renderBoard([asha]);
+    expect(screen.queryByText("Capacity")).not.toBeInTheDocument();
+  });
+});
+
+describe("CheckinBoard — at-door sales", () => {
+  it("counts them in the header but never lists them as guests", () => {
+    renderBoard([asha, atDoorSale("rec-door-1"), atDoorSale("rec-door-2")]);
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("2");
+    expect(stat("Tickets Sold")).toBe("3");
+    expect(stat("Checked In")).toBe("2");
+    expect(stat("Non-Members")).toBe("0 / 1");
+    expect(screen.queryByText(AT_DOOR_TICKET_TYPE_NAME)).not.toBeInTheDocument();
+  });
+
+  it("adds a sale with one tap, before the server confirms", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha]);
+    serverTickets = [asha, atDoorSale("rec-door-1")];
+
+    await user.click(screen.getByRole("button", { name: "Add at-door sale" }));
+
+    expect(atDoorCalls("POST")).toBe(1);
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+    expect(stat("Checked In")).toBe("1");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add at-door sale" })).toBeEnabled()
+    );
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+  });
+
+  it("undoes the most recent sale with −", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, atDoorSale("rec-door-1"), atDoorSale("rec-door-2")]);
+    serverTickets = [asha, atDoorSale("rec-door-1")];
+
+    await user.click(screen.getByRole("button", { name: "Undo at-door sale" }));
+
+    expect(atDoorCalls("DELETE")).toBe(1);
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+  });
+
+  it("can't undo when there are no sales", () => {
+    renderBoard([asha]);
+    expect(screen.getByRole("button", { name: "Undo at-door sale" })).toBeDisabled();
+  });
+
+  it("can't add a sale once the event is at capacity", () => {
+    renderBoard([asha, atDoorSale("rec-door-1")], { capacity: 2 });
+    expect(screen.getByRole("button", { name: "Add at-door sale" })).toBeDisabled();
+    expect(screen.getByText("At capacity")).toBeInTheDocument();
+  });
+
+  it("shows the server's reason and the real count when a sale is refused", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input).endsWith("/at-door")
+        ? respond({ error: "Event is at capacity." }, 400)
+        : respond({ tickets: serverTickets })
+    );
+    const user = userEvent.setup();
+    renderBoard([asha]);
+
+    await user.click(screen.getByRole("button", { name: "Add at-door sale" }));
+
+    expect(await screen.findByText("Event is at capacity.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("at-door-count")).toHaveTextContent("0")
+    );
   });
 });

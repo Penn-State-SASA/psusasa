@@ -125,14 +125,6 @@ export default defineType({
               validation: (Rule) => Rule.required().integer().min(0),
             },
             {
-              name: "capacity",
-              title: "Capacity",
-              description:
-                "Max tickets of this type. Leave blank for unlimited. Unpaid cash-at-the-door orders don't count toward this.",
-              type: "number",
-              validation: (Rule) => Rule.integer().min(1),
-            },
-            {
               name: "salesOpen",
               title: "Sales Open",
               description:
@@ -158,6 +150,24 @@ export default defineType({
           },
         },
       ],
+    }),
+    defineField({
+      name: "capacity",
+      title: "Event Capacity",
+      type: "number",
+      description:
+        "Max people for the whole event, across all ticket types. Leave blank for unlimited. Paid tickets, at-door sales, and board +1s count toward this; former board and unpaid cash-at-the-door orders don't.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      validation: (Rule) => Rule.integer().min(1),
+    }),
+    defineField({
+      name: "atDoorPriceCents",
+      title: "At-Door Price (in cents)",
+      type: "number",
+      description:
+        "Recorded for each at-door sale tapped on the check-in board. e.g. 1500 = $15.00. Leave blank to record $0.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      validation: (Rule) => Rule.integer().min(0),
     }),
     defineField({
       name: "cashPaymentEnabled",

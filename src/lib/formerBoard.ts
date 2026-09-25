@@ -7,7 +7,7 @@ import type { FormerBoardMember } from "@/lib/types";
 
 // Synthetic ticket-type key for a former board member's comped entry — like
 // BOARD_PLUS_ONE_TICKET_TYPE_KEY, it never matches a real Sanity ticket
-// type's _key, so these rows never count toward a ticket type's capacity.
+// type's _key. These rows never count toward the event's capacity.
 export const FORMER_BOARD_TICKET_TYPE_KEY = "former-board";
 export const FORMER_BOARD_TICKET_TYPE_NAME = "Former Board";
 

@@ -5,6 +5,11 @@ import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
 import {
+  AT_DOOR_TICKET_TYPE_KEY,
+  AT_DOOR_TICKET_TYPE_NAME,
+  isAtDoorTicket,
+} from "@/lib/atDoor";
+import {
   isFormerBoardTicket,
   isFormerBoardVirtualId,
   rosterKeyFromVirtualId,
@@ -17,12 +22,41 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatProgress(p: { checkedIn: number; expected: number }): string {
+  return `${p.checkedIn} / ${p.expected}`;
+}
+
+// Stand-in for an at-door sale while its request is in flight — the next
+// refetch swaps it for the real Airtable row.
+function pendingAtDoorSale(): TicketRecord {
+  return {
+    id: `at-door-pending:${Date.now()}`,
+    firstName: AT_DOOR_TICKET_TYPE_NAME,
+    lastName: "",
+    contactEmail: "",
+    psuEmail: "",
+    isMember: false,
+    memberYear: null,
+    ticketTypeKey: AT_DOOR_TICKET_TYPE_KEY,
+    ticketTypeName: AT_DOOR_TICKET_TYPE_NAME,
+    quantity: 1,
+    amountPaidCents: 0,
+    paymentMethod: "At Door",
+    paid: true,
+    checkedInCount: 1,
+    checkedInAt: null,
+    boardMemberName: null,
+  };
+}
+
 interface CheckinBoardProps {
   eventId: string;
   eventTitle: string;
   initialTickets: TicketRecord[];
   boardPlusOneEnabled: boolean;
   boardMembers: BoardMemberPickerEntry[];
+  /** The event-wide capacity, or null when there's no limit. */
+  capacity: number | null;
 }
 
 export default function CheckinBoard({
@@ -31,6 +65,7 @@ export default function CheckinBoard({
   initialTickets,
   boardPlusOneEnabled,
   boardMembers,
+  capacity,
 }: CheckinBoardProps) {
   const [tickets, setTickets] = useState<TicketRecord[]>(initialTickets);
   const [search, setSearch] = useState("");
@@ -38,6 +73,7 @@ export default function CheckinBoard({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState<TicketRecord | null>(null);
+  const [atDoorPending, setAtDoorPending] = useState(false);
 
   const [showAddPlusOne, setShowAddPlusOne] = useState(false);
   const [plusOneBoardMemberKey, setPlusOneBoardMemberKey] = useState("");
@@ -126,6 +162,30 @@ export default function CheckinBoard({
       // Swap the placeholder for the real row (or roll back on failure).
       await refetch();
       setPendingId(null);
+    }
+  }
+
+  // At-door sales are nameless one-person rows, shown only as a counter:
+  // + records a new one, − deletes the most recent (from any device).
+  async function changeAtDoorSales(method: "POST" | "DELETE") {
+    setAtDoorPending(true);
+    setError(null);
+    setTickets((prev) => {
+      if (method === "POST") return [...prev, pendingAtDoorSale()];
+      const i = prev.findLastIndex(isAtDoorTicket);
+      return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+    });
+    try {
+      const res = await fetch(`/api/checkin/${eventId}/at-door`, { method });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to update at-door sales.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update at-door sales.");
+    } finally {
+      await refetch();
+      setAtDoorPending(false);
     }
   }
 
@@ -242,7 +302,7 @@ export default function CheckinBoard({
   }
 
   const filtered = useMemo(
-    () => tickets.filter((t) => matchesSearch(t, search)),
+    () => tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
     [tickets, search]
   );
 
@@ -277,26 +337,49 @@ export default function CheckinBoard({
   const stats = useMemo(() => {
     let totalSold = 0;
     let totalCheckedIn = 0;
-    let memberSold = 0;
-    let nonMemberSold = 0;
+    let capacityUsed = 0;
     let cashOutstandingCents = 0;
-    let formerBoardTotal = 0;
-    let formerBoardCheckedIn = 0;
+    let atDoorSales = 0;
+    const members = { checkedIn: 0, expected: 0 };
+    const nonMembers = { checkedIn: 0, expected: 0 };
+    const boardPlusOne = { checkedIn: 0, expected: 0 };
+    const formerBoard = { checkedIn: 0, expected: 0 };
     const byType = new Map<string, { sold: number; checkedIn: number }>();
 
     for (const t of tickets) {
       // Checked In is the headcount through the door, comps included.
       totalCheckedIn += t.checkedInCount;
-      // Former board are comped guests, not sales — tallied on their own.
+      // Former board are comped guests, not sales — tallied on their own,
+      // and never count toward capacity.
       if (isFormerBoardTicket(t)) {
-        formerBoardTotal += t.quantity;
-        formerBoardCheckedIn += t.checkedInCount;
+        formerBoard.expected += t.quantity;
+        formerBoard.checkedIn += t.checkedInCount;
         continue;
       }
       totalSold += t.quantity;
-      if (t.isMember) memberSold += t.quantity;
-      else nonMemberSold += t.quantity;
+      // Same rule the server enforces (sumCapacityUsed): every paid row
+      // except former board, so unpaid cash orders don't hold a seat yet.
+      if (t.paid) capacityUsed += t.quantity;
+      if (isAtDoorTicket(t)) {
+        atDoorSales += t.quantity;
+        continue;
+      }
       cashOutstandingCents += amountOwedCents(t);
+
+      if (t.ticketTypeKey === BOARD_PLUS_ONE_TICKET_TYPE_KEY) {
+        boardPlusOne.expected += t.quantity;
+        boardPlusOne.checkedIn += t.checkedInCount;
+      } else if (t.isMember) {
+        // Only the buyer's own seat is member-priced; the rest of their
+        // party are non-members. The buyer counts as the first one in.
+        members.expected += 1;
+        members.checkedIn += Math.min(t.checkedInCount, 1);
+        nonMembers.expected += t.quantity - 1;
+        nonMembers.checkedIn += Math.max(0, t.checkedInCount - 1);
+      } else {
+        nonMembers.expected += t.quantity;
+        nonMembers.checkedIn += t.checkedInCount;
+      }
 
       const entry = byType.get(t.ticketTypeName) ?? { sold: 0, checkedIn: 0 };
       entry.sold += t.quantity;
@@ -307,14 +390,18 @@ export default function CheckinBoard({
     return {
       totalSold,
       totalCheckedIn,
-      memberSold,
-      nonMemberSold,
+      capacityUsed,
       cashOutstandingCents,
-      formerBoardTotal,
-      formerBoardCheckedIn,
+      atDoorSales,
+      members,
+      nonMembers,
+      boardPlusOne,
+      formerBoard,
       byType: Array.from(byType.entries()),
     };
   }, [tickets]);
+
+  const atCapacity = capacity !== null && stats.capacityUsed >= capacity;
 
   return (
     <div>
@@ -322,15 +409,14 @@ export default function CheckinBoard({
         <h1 className="font-heading text-lg font-semibold text-sasa-red-900">
           {eventTitle}
         </h1>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Stat label="Tickets Sold" value={String(stats.totalSold)} />
           <Stat label="Checked In" value={String(stats.totalCheckedIn)} />
-          <Stat label="Members" value={String(stats.memberSold)} />
-          <Stat label="Non-Members" value={String(stats.nonMemberSold)} />
-          {stats.formerBoardTotal > 0 && (
+          {capacity !== null && (
             <Stat
-              label="Former Board"
-              value={`${stats.formerBoardCheckedIn} / ${stats.formerBoardTotal}`}
+              label="Capacity"
+              value={`${stats.capacityUsed} / ${capacity}`}
+              warn={atCapacity}
             />
           )}
           <Stat
@@ -338,6 +424,46 @@ export default function CheckinBoard({
             value={formatPrice(stats.cashOutstandingCents)}
             warn={stats.cashOutstandingCents > 0}
           />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm sm:grid-cols-4">
+          <Stat label="Members" value={formatProgress(stats.members)} />
+          <Stat label="Non-Members" value={formatProgress(stats.nonMembers)} />
+          {(boardPlusOneEnabled || stats.boardPlusOne.expected > 0) && (
+            <Stat label="Board +1" value={formatProgress(stats.boardPlusOne)} />
+          )}
+          {stats.formerBoard.expected > 0 && (
+            <Stat label="Former Board" value={formatProgress(stats.formerBoard)} />
+          )}
+        </div>
+        <div className="mt-3 border-t border-gray-100 pt-3 text-sm">
+          <p className="text-xs uppercase tracking-wide text-sasa-neutral-400">At-Door Sales</p>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              onClick={() => changeAtDoorSales("DELETE")}
+              disabled={atDoorPending || stats.atDoorSales <= 0}
+              aria-label="Undo at-door sale"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span
+              data-testid="at-door-count"
+              className="min-w-[2.5rem] text-center text-lg font-semibold text-sasa-red-900"
+            >
+              {stats.atDoorSales}
+            </span>
+            <button
+              onClick={() => changeAtDoorSales("POST")}
+              disabled={atDoorPending || atCapacity}
+              aria-label="Add at-door sale"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              +
+            </button>
+            {atCapacity && (
+              <span className="text-xs font-medium text-amber-600">At capacity</span>
+            )}
+          </div>
         </div>
         {stats.byType.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sasa-neutral-500">
