@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
@@ -9,7 +9,7 @@ import {
   isFormerBoardVirtualId,
   rosterKeyFromVirtualId,
 } from "@/lib/formerBoard";
-import { amountOwedCents, checkinUpdates } from "@/lib/checkin";
+import { amountOwedCents, checkinUpdates, matchesSearch, psuIdOf } from "@/lib/checkin";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -34,6 +34,7 @@ export default function CheckinBoard({
 }: CheckinBoardProps) {
   const [tickets, setTickets] = useState<TicketRecord[]>(initialTickets);
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState<TicketRecord | null>(null);
@@ -128,6 +129,14 @@ export default function CheckinBoard({
     }
   }
 
+  // Once an order is fully in, the door moves on to the next guest: clear
+  // the box and keep the keyboard up. Must run synchronously inside the
+  // tap/keypress, or iOS won't reopen the keyboard on focus().
+  function resetSearch() {
+    setSearch("");
+    searchRef.current?.focus();
+  }
+
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
   // in (not un-checking) a cash order that still owes something routes
   // through the collect-cash confirmation first, so staff always see the
@@ -135,7 +144,10 @@ export default function CheckinBoard({
   function handleTap(ticket: TicketRecord) {
     if (isFormerBoardVirtualId(ticket.id)) {
       // Only ever shown un-checked-in — once checked in it's a real row.
-      if (ticket.checkedInCount === 0) checkInFormerBoard(ticket);
+      if (ticket.checkedInCount === 0) {
+        resetSearch();
+        checkInFormerBoard(ticket);
+      }
       return;
     }
     if (ticket.checkedInCount > 0) {
@@ -146,6 +158,7 @@ export default function CheckinBoard({
       setConfirmCash(ticket);
       return;
     }
+    resetSearch();
     sendMark(ticket.id, checkinUpdates(ticket, 1));
   }
 
@@ -158,7 +171,9 @@ export default function CheckinBoard({
       setConfirmCash(ticket);
       return;
     }
-    sendMark(ticket.id, checkinUpdates(ticket, ticket.checkedInCount + 1));
+    const next = ticket.checkedInCount + 1;
+    if (next >= ticket.quantity) resetSearch();
+    sendMark(ticket.id, checkinUpdates(ticket, next));
   }
 
   function decrementCheckedIn(ticket: TicketRecord) {
@@ -168,7 +183,9 @@ export default function CheckinBoard({
 
   function confirmCollectCash() {
     if (!confirmCash) return;
-    sendMark(confirmCash.id, checkinUpdates(confirmCash, confirmCash.checkedInCount + 1));
+    const next = confirmCash.checkedInCount + 1;
+    if (next >= confirmCash.quantity) resetSearch();
+    sendMark(confirmCash.id, checkinUpdates(confirmCash, next));
     setConfirmCash(null);
   }
 
@@ -224,23 +241,38 @@ export default function CheckinBoard({
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return tickets;
-    return tickets.filter((t) =>
-      `${t.firstName} ${t.lastName} ${t.contactEmail} ${t.psuEmail}`
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [tickets, search]);
+  const filtered = useMemo(
+    () => tickets.filter((t) => matchesSearch(t, search)),
+    [tickets, search]
+  );
 
+  // Everyone still to arrive first (partial parties included — they still
+  // have seats left), then alphabetical by last name.
   const sorted = useMemo(
     () =>
-      [...filtered].sort((a, b) =>
-        `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
-      ),
+      [...filtered].sort((a, b) => {
+        const aDone = a.checkedInCount >= a.quantity ? 1 : 0;
+        const bDone = b.checkedInCount >= b.quantity ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }),
     [filtered]
   );
+
+  // Enter/Go checks in the only match, but never undoes a check-in and
+  // never guesses between several people.
+  const enterTarget =
+    search.trim() && sorted.length === 1 && sorted[0].checkedInCount < sorted[0].quantity
+      ? sorted[0]
+      : null;
+
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!enterTarget || pendingId === enterTarget.id) return;
+    if (enterTarget.quantity === 1) handleTap(enterTarget);
+    else incrementCheckedIn(enterTarget);
+  }
 
   const stats = useMemo(() => {
     let totalSold = 0;
@@ -320,10 +352,18 @@ export default function CheckinBoard({
 
       <div className="mb-4 flex gap-2">
         <input
-          type="text"
+          ref={searchRef}
+          type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or email..."
+          onKeyDown={handleSearchKeyDown}
+          placeholder="Search by name, email, or PSU ID..."
+          autoFocus
+          enterKeyHint="go"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
           className="w-full rounded border border-gray-300 px-4 py-3 text-base focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
         />
         {boardPlusOneEnabled && boardMembers.length > 0 && (
@@ -335,6 +375,12 @@ export default function CheckinBoard({
           </button>
         )}
       </div>
+
+      {enterTarget && (
+        <p className="-mt-2 mb-4 text-xs text-sasa-neutral-500">
+          Press Enter / Go to check in {enterTarget.firstName} {enterTarget.lastName}
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -355,6 +401,7 @@ export default function CheckinBoard({
           const fullyCheckedIn = t.checkedInCount >= t.quantity;
           const partiallyCheckedIn = t.checkedInCount > 0 && !fullyCheckedIn;
           const formerBoard = isFormerBoardTicket(t);
+          const psuId = psuIdOf(t);
 
           return (
             <div
@@ -413,6 +460,7 @@ export default function CheckinBoard({
                 <div className="mt-0.5 text-xs text-sasa-neutral-500">
                   {formerBoard ? "Free entry" : `${t.quantity}x ${t.ticketTypeName}`}
                   {t.contactEmail ? ` · ${t.contactEmail}` : ""}
+                  {psuId ? ` · ${psuId}` : ""}
                 </div>
               </div>
 
