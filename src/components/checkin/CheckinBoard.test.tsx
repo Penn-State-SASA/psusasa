@@ -11,6 +11,8 @@ import { makeFormerBoardMember, makeTicketRecord } from "@/test/factories";
 
 const fetchMock = vi.fn<typeof fetch>();
 
+const SEARCH_PLACEHOLDER = "Search by name, email, or PSU ID...";
+
 /** What GET /api/checkin/[eventId]/tickets returns — the "real" Airtable state. */
 let serverTickets: TicketRecord[] = [];
 
@@ -106,7 +108,7 @@ describe("CheckinBoard — finding people", () => {
   it("filters by name or email as staff type", async () => {
     const user = userEvent.setup();
     renderBoard([asha, dev, party]);
-    const search = screen.getByPlaceholderText("Search by name or email...");
+    const search = screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
 
     await user.type(search, "patel");
     expect(screen.getByText("Asha Patel")).toBeInTheDocument();
@@ -120,6 +122,130 @@ describe("CheckinBoard — finding people", () => {
     await user.clear(search);
     await user.type(search, "nobody");
     expect(screen.getByText("No matching orders.")).toBeInTheDocument();
+  });
+
+  it("finds a guest by a few letters of each name, in either order", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, dev, party]);
+
+    await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "ra de");
+
+    expect(screen.getByText("Dev Rao")).toBeInTheDocument();
+    expect(screen.queryByText("Asha Patel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Meera Iyer")).not.toBeInTheDocument();
+  });
+
+  it("finds a guest by PSU ID and shows it on their row", async () => {
+    const user = userEvent.setup();
+    renderBoard([{ ...asha, psuEmail: "axp5123@psu.edu" }, dev]);
+
+    await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "axp5");
+
+    expect(within(row(/Asha Patel/)).getByText(/axp5123/)).toBeInTheDocument();
+    expect(screen.queryByText("Dev Rao")).not.toBeInTheDocument();
+  });
+
+  it("lists everyone still to arrive before those already checked in", () => {
+    renderBoard([{ ...asha, checkedInCount: 1 }, dev, { ...party, checkedInCount: 1 }]);
+    const names = screen
+      .getAllByText(/^(Asha Patel|Dev Rao|Meera Iyer)$/)
+      .map((el) => el.textContent);
+    // Meera's party is only partly in, so she still counts as arriving.
+    expect(names).toEqual(["Meera Iyer", "Dev Rao", "Asha Patel"]);
+  });
+});
+
+describe("CheckinBoard — door flow", () => {
+  it("checks in the only match on Enter, then clears the search for the next guest", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, dev, party]);
+    const search = screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    await user.type(search, "asha");
+    expect(screen.getByText("Press Enter / Go to check in Asha Patel")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+
+    expect(sent("/mark")).toEqual([{ recordId: "rec-asha", checkedInCount: 1 }]);
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+  });
+
+  it("does nothing on Enter when more than one person matches", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, { ...dev, firstName: "Asha", lastName: "Rao" }]);
+
+    await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "asha{Enter}");
+
+    expect(sent("/mark")).toEqual([]);
+    expect(screen.queryByText(/Press Enter/)).not.toBeInTheDocument();
+  });
+
+  it("still asks for cash when Enter picks a cash order", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, dev]);
+
+    await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "dev{Enter}");
+
+    expect(screen.getByRole("heading", { name: "Collect cash" })).toBeInTheDocument();
+    expect(sent("/mark")).toEqual([]);
+  });
+
+  it("never undoes a check-in from Enter", async () => {
+    const user = userEvent.setup();
+    renderBoard([{ ...asha, checkedInCount: 1 }, dev]);
+
+    await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "asha{Enter}");
+
+    expect(sent("/mark")).toEqual([]);
+    expect(within(row(/Asha Patel/)).getByText("Checked In ✓")).toBeInTheDocument();
+  });
+
+  it("adds one seat per Enter for a party, clearing only once they're all in", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, { ...party, checkedInCount: 1 }]);
+    const search = screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    await user.type(search, "meera{Enter}");
+    expect(search).toHaveValue("meera");
+    await waitFor(() => expect(screen.getByText("2 / 3")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Increase checked-in count" })).toBeEnabled()
+    );
+
+    await user.keyboard("{Enter}");
+    expect(search).toHaveValue("");
+    expect(sent("/mark")).toEqual([
+      { recordId: "rec-party", checkedInCount: 2 },
+      { recordId: "rec-party", checkedInCount: 3 },
+    ]);
+  });
+
+  it("clears the search after tapping a guest in, but not after undoing one", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, { ...dev, paymentMethod: "Card", checkedInCount: 1 }]);
+    const search = screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    await user.type(search, "rao");
+    await user.click(row(/Dev Rao/));
+    expect(search).toHaveValue("rao");
+
+    await user.clear(search);
+    await user.type(search, "patel");
+    await user.click(row(/Asha Patel/));
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+  });
+
+  it("clears the search once cash is collected", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha, dev]);
+    const search = screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    await user.type(search, "dev{Enter}");
+    await user.click(screen.getByRole("button", { name: "Collected — Check In" }));
+
+    expect(sent("/mark")).toEqual([{ recordId: "rec-dev", checkedInCount: 1, paid: true }]);
+    expect(search).toHaveValue("");
   });
 });
 
