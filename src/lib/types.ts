@@ -25,7 +25,6 @@ export interface TicketType {
   name: string;
   memberPriceCents: number;
   nonMemberPriceCents: number;
-  capacity?: number;
   salesOpen: boolean;
 }
 
@@ -49,6 +48,10 @@ export interface SanityEvent {
   /** Former board roster `_key`s NOT comped for this event — unset/empty means everyone on the roster gets in free. */
   formerBoardExcludedKeys?: string[];
   ticketTypes?: TicketType[];
+  /** Max people for the whole event (paid tickets + at-door sales + board +1s) — unset means unlimited. */
+  capacity?: number;
+  /** Amount recorded on each at-door sale — unset means $0. */
+  atDoorPriceCents?: number;
 }
 
 export interface BoardMemberPickerEntry {

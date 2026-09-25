@@ -7,7 +7,7 @@ import { sanityFetchSingle } from "../../../../../../sanity/lib/client";
 import { eventBySlugQuery } from "../../../../../../sanity/lib/queries";
 import { urlFor } from "../../../../../../sanity/lib/image";
 import type { SanityEvent } from "@/lib/types";
-import { sumSoldTicketQuantity } from "@/lib/airtable";
+import { sumCapacityUsed } from "@/lib/airtable";
 import type { TicketTypeOption } from "@/components/tickets/TicketPurchaseForm";
 
 const TicketPurchaseForm = dynamicImport(
@@ -46,23 +46,18 @@ export default async function EventTicketsPage({ params }: TicketsPageProps) {
     notFound();
   }
 
-  const ticketTypes: TicketTypeOption[] = await Promise.all(
-    ticketTypesList.map(async (t) => {
-      let remaining: number | null = null;
-      if (typeof t.capacity === "number") {
-        const sold = await sumSoldTicketQuantity(event._id, t._key);
-        remaining = Math.max(0, t.capacity - sold);
-      }
-      return {
-        _key: t._key,
-        name: t.name,
-        memberPriceCents: t.memberPriceCents,
-        nonMemberPriceCents: t.nonMemberPriceCents,
-        salesOpen: t.salesOpen !== false,
-        remaining,
-      };
-    })
-  );
+  const ticketTypes: TicketTypeOption[] = ticketTypesList.map((t) => ({
+    _key: t._key,
+    name: t.name,
+    memberPriceCents: t.memberPriceCents,
+    nonMemberPriceCents: t.nonMemberPriceCents,
+    salesOpen: t.salesOpen !== false,
+  }));
+
+  const remaining =
+    typeof event.capacity === "number"
+      ? Math.max(0, event.capacity - (await sumCapacityUsed(event._id)))
+      : null;
 
   const TIME_ZONE = "America/New_York";
   const start = new Date(event.date);
@@ -164,6 +159,7 @@ export default async function EventTicketsPage({ params }: TicketsPageProps) {
             eventId={event._id}
             eventSlug={params.slug}
             ticketTypes={ticketTypes}
+            remaining={remaining}
             cashPaymentEnabled={event.cashPaymentEnabled !== false}
           />
         </div>

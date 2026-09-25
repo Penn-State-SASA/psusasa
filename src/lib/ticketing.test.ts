@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolveTicketOrder, TicketOrderError, MAX_TICKETS_PER_ORDER } from "@/lib/ticketing";
 import { sanityFetchSingle } from "../../sanity/lib/client";
-import { hasUsedMemberPricing, lookupCurrentMember, sumSoldTicketQuantity } from "@/lib/airtable";
+import { hasUsedMemberPricing, lookupCurrentMember, sumCapacityUsed } from "@/lib/airtable";
 import { makeEvent, makeTicketType } from "@/test/factories";
 
 // An explicit factory: automocking would still load next-sanity to learn
@@ -37,7 +37,7 @@ beforeEach(() => {
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
   vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
-  vi.mocked(sumSoldTicketQuantity).mockResolvedValue(0);
+  vi.mocked(sumCapacityUsed).mockResolvedValue(0);
 });
 
 describe("resolveTicketOrder — input validation", () => {
@@ -154,31 +154,31 @@ describe("resolveTicketOrder — member pricing", () => {
 });
 
 describe("resolveTicketOrder — capacity", () => {
-  const capped = makeEvent({ ticketTypes: [{ ...ga, capacity: 100 }] });
+  const capped = makeEvent({ ticketTypes: [ga], capacity: 100 });
 
-  it("doesn't count sales for a ticket type with no capacity", async () => {
+  it("doesn't count sales for an event with no capacity", async () => {
     await order();
-    expect(sumSoldTicketQuantity).not.toHaveBeenCalled();
+    expect(sumCapacityUsed).not.toHaveBeenCalled();
   });
 
   it("accepts an order that exactly fills the remaining seats", async () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(capped);
-    vi.mocked(sumSoldTicketQuantity).mockResolvedValue(97);
+    vi.mocked(sumCapacityUsed).mockResolvedValue(97);
     expect((await order({ quantity: 3 })).quantity).toBe(3);
-    expect(sumSoldTicketQuantity).toHaveBeenCalledWith("event-1", "ga");
+    expect(sumCapacityUsed).toHaveBeenCalledWith("event-1");
   });
 
   it("says how many are left when an order is too big", async () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(capped);
-    vi.mocked(sumSoldTicketQuantity).mockResolvedValue(98);
+    vi.mocked(sumCapacityUsed).mockResolvedValue(98);
     const err = await rejection(order({ quantity: 3 }));
-    expect(err.message).toBe("Only 2 ticket(s) left for General Admission.");
+    expect(err.message).toBe("Only 2 ticket(s) left.");
   });
 
   it("says sold out when nothing is left", async () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(capped);
-    vi.mocked(sumSoldTicketQuantity).mockResolvedValue(100);
+    vi.mocked(sumCapacityUsed).mockResolvedValue(100);
     const err = await rejection(order());
-    expect(err.message).toBe("General Admission is sold out.");
+    expect(err.message).toBe("This event is sold out.");
   });
 });

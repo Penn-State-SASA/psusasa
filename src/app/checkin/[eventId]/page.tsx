@@ -51,6 +51,7 @@ export default async function CheckinEventPage({
       initialTickets={tickets}
       boardPlusOneEnabled={Boolean(event.boardPlusOneEnabled)}
       boardMembers={boardMembers}
+      capacity={typeof event.capacity === "number" ? event.capacity : null}
     />
   );
 }

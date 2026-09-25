@@ -258,11 +258,12 @@ Replaces Doorlist. Current SASA members automatically get a cheaper (or free) pr
 **Setting up ticket sales for an event:**
 
 1. Open the event in **Studio > Event** and toggle **Ticketing Enabled**
-2. Under **Ticket Types**, add one entry per tier (e.g. "General Admission", "VIP"), each with its own **Member Price** and **Non-Member Price** (in cents), an optional **Capacity**, and **Sales Open**
-3. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
-4. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
+2. Under **Ticket Types**, add one entry per tier (e.g. "General Admission", "VIP"), each with its own **Member Price** and **Non-Member Price** (in cents) and **Sales Open**
+3. Optionally set an **Event Capacity** (the max people for the whole event, across all ticket types — blank means unlimited) and an **At-Door Price** (in cents, recorded on each at-door sale — blank means $0)
+4. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
+5. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
 
-Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which puts them on the door list and shows as due on the check-in board. Unpaid cash orders don't count toward a ticket type's capacity (entry isn't guaranteed); they count once the door marks them paid.
+Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which puts them on the door list and shows as due on the check-in board. Event Capacity counts paid tickets of every type, at-door sales, and board +1 guests. Unpaid cash orders don't count (entry isn't guaranteed) until the door marks them paid, and former board members never count. Once the event is full, every ticket type shows as **Sold out** online and the door can't add more at-door sales (board +1s are still allowed).
 
 **Running the door on event night:**
 
@@ -271,6 +272,8 @@ Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," 
 3. Cash orders show a "Cash due" badge; tapping one prompts you to confirm you collected the cash before it checks them in
 4. Multiple staff/devices can work the same board at once — check-ins sync across devices every ~3 seconds
 5. Former board members who are comped for the event are already on the list, tagged **Former Board** — tap to check them in like anyone else. They don't count toward Tickets Sold or capacity; the header shows them separately
+6. For someone paying at the door, tap **+** under **At-Door Sales** — it adds one person to Checked In and to capacity, recorded in Airtable at the event's At-Door Price with payment method "At Door". Tap **−** to undo the most recent one (it deletes that row). At-door sales only show as this counter, not in the guest list, and **+** is disabled once the event is at capacity
+7. The header shows checked-in / expected for **Members**, **Non-Members**, **Board +1**, and **Former Board**, plus **Capacity** (used / capacity) when the event has one. On a member's multi-ticket order, only the buyer's own seat counts as a member — the rest of their party are non-members — and the first one checked in on that order counts as the member
 
 **Former board free entry:**
 

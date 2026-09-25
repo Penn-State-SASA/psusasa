@@ -48,3 +48,13 @@ test("the former board check-in refuses a signed-out caller", async ({ request }
   expect(res.status()).toBe(401);
   expect(await res.json()).toEqual({ error: "Not authorized" });
 });
+
+test("at-door sales refuse a signed-out caller, for adding and undoing", async ({ request }) => {
+  for (const res of [
+    await request.post(`/api/checkin/${EVENT}/at-door`),
+    await request.delete(`/api/checkin/${EVENT}/at-door`),
+  ]) {
+    expect(res.status()).toBe(401);
+    expect(await res.json()).toEqual({ error: "Not authorized" });
+  }
+});
