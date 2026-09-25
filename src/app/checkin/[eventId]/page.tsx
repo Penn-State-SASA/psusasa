@@ -6,6 +6,8 @@ import {
 } from "../../../../sanity/lib/queries";
 import type { SanityEvent, BoardMemberPickerEntry } from "@/lib/types";
 import { listTicketsForEvent } from "@/lib/airtable";
+import { mergeFormerBoardGuests } from "@/lib/formerBoard";
+import { loadFreeFormerBoardMembers } from "@/lib/formerBoardRoster";
 import CheckinBoard from "@/components/checkin/CheckinBoard";
 
 // The middleware has already confirmed the caller is authorized for this
@@ -25,7 +27,14 @@ export default async function CheckinEventPage({
 
   if (!event) notFound();
 
-  const tickets = await listTicketsForEvent(params.eventId);
+  const [orders, formerBoard] = await Promise.all([
+    listTicketsForEvent(params.eventId),
+    loadFreeFormerBoardMembers(event).catch((err) => {
+      console.error("Former board list fetch error:", err);
+      return [];
+    }),
+  ]);
+  const tickets = mergeFormerBoardGuests(orders, formerBoard);
 
   let boardMembers: BoardMemberPickerEntry[] = [];
   if (event.boardPlusOneEnabled) {

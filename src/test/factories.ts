@@ -1,4 +1,4 @@
-import type { SanityEvent, TicketType } from "@/lib/types";
+import type { FormerBoardMember, SanityEvent, TicketType } from "@/lib/types";
 import type { TicketRecord } from "@/lib/airtable";
 
 export function makeTicketType(overrides: Partial<TicketType> = {}): TicketType {
@@ -47,6 +47,17 @@ export function makeTicketRecord(overrides: Partial<TicketRecord> = {}): TicketR
     checkedInCount: 0,
     checkedInAt: null,
     boardMemberName: null,
+    ...overrides,
+  };
+}
+
+export function makeFormerBoardMember(
+  overrides: Partial<FormerBoardMember> = {}
+): FormerBoardMember {
+  return {
+    _key: "om-makwana",
+    firstName: "Om",
+    lastName: "Makwana",
     ...overrides,
   };
 }

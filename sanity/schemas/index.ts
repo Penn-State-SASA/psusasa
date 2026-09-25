@@ -6,6 +6,7 @@ import galleryAlbum from "./galleryAlbum";
 import announcement from "./announcement";
 import siteSettings from "./siteSettings";
 import boardMembers from "./boardMembers";
+import formerBoardMembers from "./formerBoardMembers";
 import homePage from "./homePage";
 import aboutPage from "./aboutPage";
 import joinPage from "./joinPage";
@@ -23,6 +24,7 @@ export const schemaTypes = [
   announcement,
   siteSettings,
   boardMembers,
+  formerBoardMembers,
   homePage,
   aboutPage,
   joinPage,

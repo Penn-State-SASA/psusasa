@@ -8,6 +8,7 @@ import {
   lookupCurrentMember,
   sumSoldTicketQuantity,
   updateTicketCheckinState,
+  upsertFormerBoardCheckin,
   type TicketOrderMetadata,
 } from "@/lib/airtable";
 import { muteConsole } from "@/test/console";
@@ -231,6 +232,53 @@ describe("appendTicketToAirtable", () => {
   it("throws when Airtable rejects the write", async () => {
     fetchMock.mockResolvedValue(json({ error: "INVALID_VALUE" }, 422));
     await expect(appendTicketToAirtable(order, "pi_123")).rejects.toThrow(/Airtable error: 422/);
+  });
+});
+
+describe("upsertFormerBoardCheckin", () => {
+  const guest = {
+    eventId: "event-1",
+    eventName: "Diwali Night",
+    rosterKey: "om-makwana",
+    firstName: "Om",
+    lastName: "Makwana",
+    ticketTypeKey: "former-board",
+    ticketTypeName: "Former Board",
+  };
+
+  it("upserts one comped, checked-in row keyed to this person at this event", async () => {
+    fetchMock.mockResolvedValue(json({ createdRecords: ["rec1"], records: [] }));
+    await upsertFormerBoardCheckin(guest);
+
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PATCH");
+    const body = bodyOfCall() as {
+      performUpsert: unknown;
+      records: Array<{ fields: Record<string, unknown> }>;
+    };
+    // Two door devices tapping the same person merge into one row.
+    expect(body.performUpsert).toEqual({ fieldsToMergeOn: ["Stripe Payment Intent ID"] });
+    const fields = body.records[0].fields;
+    expect(fields).toMatchObject({
+      "Stripe Payment Intent ID": "former-board:event-1:om-makwana",
+      "First Name": "Om",
+      "Last Name": "Makwana",
+      "Event ID": "event-1",
+      "Event Name": "Diwali Night",
+      "Ticket Type Key": "former-board",
+      "Ticket Type Name": "Former Board",
+      "Is Member": false,
+      Quantity: 1,
+      "Amount Paid": 0,
+      "Payment Method": "Card",
+      Paid: true,
+      "Checked In Count": 1,
+    });
+    expect(typeof fields["Checked In At"]).toBe("string");
+  });
+
+  it("throws when Airtable rejects the write", async () => {
+    fetchMock.mockResolvedValue(json({ error: "INVALID_VALUE" }, 422));
+    await expect(upsertFormerBoardCheckin(guest)).rejects.toThrow(/Airtable error: 422/);
   });
 });
 

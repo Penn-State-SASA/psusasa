@@ -270,6 +270,13 @@ Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," 
 2. Search by name or email, tap an order to check it in — tap again to undo
 3. Cash orders show a "Cash due" badge; tapping one prompts you to confirm you collected the cash before it checks them in
 4. Multiple staff/devices can work the same board at once — check-ins sync across devices every ~3 seconds
+5. Former board members who are comped for the event are already on the list, tagged **Former Board** — tap to check them in like anyone else. They don't count toward Tickets Sold or capacity; the header shows them separately
+
+**Former board free entry:**
+
+- The list of former board members lives in **Studio > Former Board Members** (first name + last name). Add or remove people there; changes apply to every ticketed event
+- Everyone on that list gets in free at every ticketed event by default. To leave someone out for one event, open the event and untick them under **Former Board — Free Entry**, then **Publish**
+- Nothing is written to Airtable until the door checks a former board member in — at that point a $0, paid row with ticket type "Former Board" is created for them
 
 ### Updating Officers / E-Board
 

@@ -46,6 +46,8 @@ export interface SanityEvent {
   ticketingEnabled?: boolean;
   cashPaymentEnabled?: boolean;
   boardPlusOneEnabled?: boolean;
+  /** Former board roster `_key`s NOT comped for this event — unset/empty means everyone on the roster gets in free. */
+  formerBoardExcludedKeys?: string[];
   ticketTypes?: TicketType[];
 }
 
@@ -57,6 +59,12 @@ export interface BoardMemberPickerEntry {
 
 export interface BoardMemberEntry extends BoardMemberPickerEntry {
   psuEmail: string;
+}
+
+export interface FormerBoardMember {
+  _key: string;
+  firstName: string;
+  lastName: string;
 }
 
 export interface Officer {

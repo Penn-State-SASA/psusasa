@@ -1,4 +1,5 @@
 import { defineField, defineType } from "sanity";
+import FormerBoardFreeEntryInput from "../components/FormerBoardFreeEntryInput";
 
 export default defineType({
   name: "event",
@@ -175,6 +176,18 @@ export default defineType({
         "Turn on to let door staff register a board member's free +1 guest directly from the check-in board.",
       hidden: ({ parent }) => !parent?.ticketingEnabled,
       initialValue: false,
+    }),
+    defineField({
+      name: "formerBoardExcludedKeys",
+      title: "Former Board — Free Entry",
+      type: "array",
+      description:
+        "Ticked former board members get in free and are added to the door list tagged \"Former Board\". Everyone is ticked by default — untick anyone who isn't comped for this event. Edit the list itself under Former Board Members.",
+      // Stores who is NOT free, so an event that's never been touched (and
+      // anyone added to the roster later) defaults to free.
+      of: [{ type: "string" }],
+      components: { input: FormerBoardFreeEntryInput },
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
     }),
     defineField({
       name: "checkinPassword",
