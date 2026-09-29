@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTicketOrder, TicketOrderError } from "@/lib/ticketing";
 import { appendTicketToAirtable } from "@/lib/airtable";
-import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import {
+  sendCashOrderConfirmationEmail,
+  sendTicketConfirmationEmail,
+} from "@/lib/ticketEmail";
+import { ticketQrDataUrlOrNull } from "@/lib/ticketQr";
 import { EMAIL_RE, isPsuEmail, PSU_CONTACT_EMAIL_ERROR } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
@@ -64,10 +68,10 @@ export async function POST(req: NextRequest) {
 
     // A $0 order has nothing to collect at the door — "pay cash at the
     // door" doesn't apply, so treat it the same as the free path on the
-    // card route: settled immediately, confirmation email sent now
-    // (a real cash order never gets one, since it's not paid yet).
+    // card route: settled immediately, with the regular confirmation email
+    // (a real cash order gets the "bring cash" version below instead).
     if (order.subtotalCents === 0) {
-      await appendTicketToAirtable(
+      const { recordId } = await appendTicketToAirtable(
         {
           firstName: trimmedFirst.slice(0, 500),
           lastName: trimmedLast.slice(0, 500),
@@ -95,10 +99,13 @@ export async function POST(req: NextRequest) {
         ticketTypeName: order.ticketType.name,
         quantity: order.quantity,
         amountPaidCents: 0,
+        recordId,
+        eventId: order.event._id,
       });
 
       return NextResponse.json({
         free: true,
+        ticketQr: await ticketQrDataUrlOrNull(recordId, order.event._id),
         memberUnits: order.memberUnits,
         nonMemberUnits: order.nonMemberUnits,
       });
@@ -107,7 +114,7 @@ export async function POST(req: NextRequest) {
     // No Stripe involved and no card fee — cash buyers pay exactly the
     // member/non-member ticket price. Writes straight to Airtable since
     // there's no PaymentIntent/webhook to hand off to.
-    await appendTicketToAirtable(
+    const { recordId } = await appendTicketToAirtable(
       {
         firstName: trimmedFirst.slice(0, 500),
         lastName: trimmedLast.slice(0, 500),
@@ -128,7 +135,21 @@ export async function POST(req: NextRequest) {
       null
     );
 
+    // Best-effort, like every ticket email: the order is already recorded,
+    // so a failed send is logged, never a failed checkout.
+    await sendCashOrderConfirmationEmail({
+      contactEmail: trimmedEmail,
+      firstName: trimmedFirst,
+      eventName: order.event.title,
+      ticketTypeName: order.ticketType.name,
+      quantity: order.quantity,
+      amountDueCents: order.subtotalCents,
+      recordId,
+      eventId: order.event._id,
+    });
+
     return NextResponse.json({
+      ticketQr: await ticketQrDataUrlOrNull(recordId, order.event._id),
       eventName: order.event.title,
       ticketTypeName: order.ticketType.name,
       quantity: order.quantity,

@@ -9,6 +9,29 @@ import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
 import { AT_DOOR_TICKET_TYPE_KEY, AT_DOOR_TICKET_TYPE_NAME } from "@/lib/atDoor";
 import { FORMER_BOARD_TICKET_TYPE_KEY, mergeFormerBoardGuests } from "@/lib/formerBoard";
 import { makeFormerBoardMember, makeTicketRecord } from "@/test/factories";
+import { ticketQrPayload } from "@/lib/ticketQrPayload";
+import type { ScanStatus } from "@/components/checkin/QrScanner";
+
+// The real scanner needs a camera; this stand-in hands tests its onDetect
+// and shows the status the board gives it.
+const scanner = vi.hoisted(() => ({ onDetect: null as null | ((text: string) => unknown) }));
+vi.mock("@/components/checkin/QrScanner", () => ({
+  default: (props: {
+    onDetect: (text: string) => unknown;
+    onClose: () => void;
+    status: ScanStatus | null;
+  }) => {
+    scanner.onDetect = props.onDetect;
+    return (
+      <div role="dialog" aria-label="Scan tickets">
+        <p data-testid="scan-status" data-tone={props.status?.tone ?? ""}>
+          {props.status?.message ?? ""}
+        </p>
+        <button onClick={props.onClose}>Close</button>
+      </div>
+    );
+  },
+}));
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -812,5 +835,224 @@ describe("CheckinBoard — at-door sales", () => {
     await waitFor(() =>
       expect(screen.getByTestId("at-door-count")).toHaveTextContent("0")
     );
+  });
+});
+
+describe("CheckinBoard — QR scanning", () => {
+  // Real-shaped Airtable ids — the QR parser rejects anything else.
+  const priya = makeTicketRecord({
+    id: "recPriya000000001",
+    firstName: "Priya",
+    lastName: "Shah",
+    contactEmail: "priya@example.com",
+  });
+  const arjun = makeTicketRecord({
+    id: "recArjun000000001",
+    firstName: "Arjun",
+    lastName: "Menon",
+    paymentMethod: "Cash",
+    paid: false,
+    amountPaidCents: 1500,
+  });
+  const family = makeTicketRecord({
+    id: "recFamily00000001",
+    firstName: "Neha",
+    lastName: "Joshi",
+    quantity: 3,
+    amountPaidCents: 4500,
+  });
+
+  const qr = (id: string, eventId = "event-1") => ticketQrPayload(id, eventId);
+
+  async function openScanner(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Scan" }));
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+  }
+
+  async function scan(text: string) {
+    await act(async () => {
+      await scanner.onDetect!(text);
+    });
+  }
+
+  const scanStatus = () => screen.getByTestId("scan-status");
+
+  it("checks in a card-paid ticket on scan and keeps the camera open", async () => {
+    const user = userEvent.setup();
+    renderBoard([priya, asha]);
+    await openScanner(user);
+
+    await scan(qr(priya.id));
+
+    expect(sent("/mark")).toEqual([{ recordId: priya.id, checkedInCount: 1 }]);
+    expect(scanStatus()).toHaveTextContent("✓ Priya Shah checked in");
+    expect(scanStatus()).toHaveAttribute("data-tone", "ok");
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+  });
+
+  it("warns instead of undoing when the ticket is already checked in", async () => {
+    const user = userEvent.setup();
+    renderBoard([{ ...priya, checkedInCount: 1 }]);
+    await openScanner(user);
+
+    await scan(qr(priya.id));
+
+    expect(sent("/mark")).toEqual([]);
+    expect(scanStatus()).toHaveTextContent("Already checked in: Priya Shah");
+    expect(scanStatus()).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("hands a cash ticket to staff to collect, then brings the camera back", async () => {
+    const user = userEvent.setup();
+    renderBoard([arjun, asha]);
+    await openScanner(user);
+
+    await scan(qr(arjun.id));
+
+    // Camera closes, only the scanned row shows, and the cash prompt is up.
+    expect(screen.queryByRole("dialog", { name: "Scan tickets" })).not.toBeInTheDocument();
+    expect(screen.getByText("Scanned ticket")).toBeInTheDocument();
+    expect(screen.queryByText("Asha Patel")).not.toBeInTheDocument();
+    expect(screen.getByText(/Arjun Menon owes/)).toHaveTextContent("Arjun Menon owes $15.00.");
+    expect(sent("/mark")).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Collected — Check In" }));
+
+    expect(sent("/mark")).toEqual([{ recordId: arjun.id, checkedInCount: 1, paid: true }]);
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+    expect(screen.queryByText("Scanned ticket")).not.toBeInTheDocument();
+  });
+
+  it("shows a group's row for staff to count people in", async () => {
+    const user = userEvent.setup();
+    renderBoard([family, asha]);
+    await openScanner(user);
+
+    await scan(qr(family.id));
+
+    expect(screen.queryByRole("dialog", { name: "Scan tickets" })).not.toBeInTheDocument();
+    expect(screen.getByText("0 / 3")).toBeInTheDocument();
+    expect(screen.queryByText("Asha Patel")).not.toBeInTheDocument();
+    expect(sent("/mark")).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Show all" }));
+    expect(screen.getByText("Asha Patel")).toBeInTheDocument();
+  });
+
+  it("goes back to scanning from a pinned row with Scan next", async () => {
+    const user = userEvent.setup();
+    renderBoard([family, asha]);
+    await openScanner(user);
+    await scan(qr(family.id));
+
+    await user.click(screen.getByRole("button", { name: "Scan next" }));
+
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+    expect(screen.queryByText("Scanned ticket")).not.toBeInTheDocument();
+  });
+
+  it("refuses a ticket for a different event", async () => {
+    const user = userEvent.setup();
+    renderBoard([priya]);
+    await openScanner(user);
+
+    await scan(qr(priya.id, "event-2"));
+
+    expect(scanStatus()).toHaveTextContent("This ticket is for a different event");
+    expect(sent("/mark")).toEqual([]);
+  });
+
+  it("says so when the code isn't a SASA ticket", async () => {
+    const user = userEvent.setup();
+    renderBoard([priya]);
+    await openScanner(user);
+
+    await scan("https://example.com/menu");
+
+    expect(scanStatus()).toHaveTextContent("Not a SASA ticket");
+    expect(scanStatus()).toHaveAttribute("data-tone", "error");
+  });
+
+  it("finds an order placed after the board last loaded", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha]);
+    serverTickets = [asha, priya];
+    await openScanner(user);
+
+    await scan(qr(priya.id));
+
+    expect(sent("/mark")).toEqual([{ recordId: priya.id, checkedInCount: 1 }]);
+    expect(scanStatus()).toHaveTextContent("✓ Priya Shah checked in");
+  });
+
+  it("says the ticket isn't on the list when even a fresh load doesn't have it", async () => {
+    const user = userEvent.setup();
+    renderBoard([asha]);
+    await openScanner(user);
+
+    await scan(qr(priya.id));
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/tickets"))).toBe(true);
+    expect(scanStatus()).toHaveTextContent("Not on this event's list");
+  });
+
+  it("never matches an at-door sale", async () => {
+    const user = userEvent.setup();
+    const sale = atDoorSale("recDoorSale000001");
+    renderBoard([asha, sale]);
+    await openScanner(user);
+
+    await scan(qr(sale.id));
+
+    expect(scanStatus()).toHaveTextContent("Not on this event's list");
+    expect(sent("/mark")).toEqual([]);
+  });
+
+  it("finds a brand-new order even while an at-door sale is still saving", async () => {
+    let finishSale!: () => void;
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).endsWith("/at-door")) {
+        await new Promise<void>((resolve) => (finishSale = resolve));
+        return respond({ ok: true });
+      }
+      return String(input).endsWith("/tickets")
+        ? respond({ tickets: serverTickets })
+        : respond({ ok: true });
+    });
+    const user = userEvent.setup();
+    renderBoard([asha]);
+
+    await user.click(screen.getByRole("button", { name: "Add at-door sale" }));
+    serverTickets = [asha, priya];
+    await openScanner(user);
+    // The board won't apply this refetch mid-save — the scan still finds Priya.
+    await scan(qr(priya.id));
+
+    expect(sent("/mark")).toEqual([{ recordId: priya.id, checkedInCount: 1 }]);
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(within(row(/Priya Shah/)).getByText("Checked In ✓")).toBeInTheDocument();
+    // The pending at-door tap still counts.
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+
+    serverTickets = [asha, { ...priya, checkedInCount: 1 }, atDoorSale("rec-door-1")];
+    finishSale();
+    await settle();
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+  });
+
+  it("reports a check-in that didn't save", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input).endsWith("/mark")
+        ? respond({ error: "Failed to update." }, 500)
+        : respond({ tickets: serverTickets })
+    );
+    const user = userEvent.setup();
+    renderBoard([priya]);
+    await openScanner(user);
+
+    await scan(qr(priya.id));
+
+    expect(scanStatus()).toHaveTextContent("Couldn't check in Priya Shah — try again");
+    expect(scanStatus()).toHaveAttribute("data-tone", "error");
   });
 });

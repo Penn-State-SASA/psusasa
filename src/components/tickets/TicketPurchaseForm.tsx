@@ -101,11 +101,13 @@ export default function TicketPurchaseForm({
     memberUnits: number;
     nonMemberUnits: number;
     amountDueCents: number;
+    ticketQr: string | null;
   } | null>(null);
 
   const [freeConfirmation, setFreeConfirmation] = useState<{
     memberUnits: number;
     nonMemberUnits: number;
+    ticketQr: string | null;
   } | null>(null);
 
   const selectedType = purchasable.find((t) => t._key === ticketTypeKey);
@@ -259,6 +261,7 @@ export default function TicketPurchaseForm({
           setFreeConfirmation({
             memberUnits: data.memberUnits,
             nonMemberUnits: data.nonMemberUnits,
+            ticketQr: data.ticketQr ?? null,
           });
         } else {
           setClientSecret(data.clientSecret);
@@ -284,12 +287,14 @@ export default function TicketPurchaseForm({
           setFreeConfirmation({
             memberUnits: data.memberUnits,
             nonMemberUnits: data.nonMemberUnits,
+            ticketQr: data.ticketQr ?? null,
           });
         } else {
           setCashConfirmation({
             memberUnits: data.memberUnits,
             nonMemberUnits: data.nonMemberUnits,
             amountDueCents: data.amountDueCents,
+            ticketQr: data.ticketQr ?? null,
           });
         }
       }
@@ -849,11 +854,8 @@ export default function TicketPurchaseForm({
             )}{" "}
             — no payment needed. A confirmation email is on its way.
           </p>
-          <div className="mx-auto max-w-sm rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
-            <p className="text-sm font-bold text-sasa-red-900">
-              All you need at the door is your name — you don&apos;t need to
-              show a ticket or confirmation email.
-            </p>
+          <div className="mx-auto max-w-sm">
+            <DoorPass ticketQr={freeConfirmation.ticketQr} />
           </div>
         </div>
       )}
@@ -965,11 +967,8 @@ export default function TicketPurchaseForm({
                 </span>{" "}
                 cash to the door.
               </p>
-              <div className="mt-4 rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
-                <p className="text-sm font-bold text-sasa-red-900">
-                  All you need at the door is your name — you don&apos;t need
-                  to show a ticket or confirmation email.
-                </p>
+              <div className="mt-4">
+                <DoorPass ticketQr={cashConfirmation.ticketQr} />
               </div>
               <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3">
                 <p className="text-xs font-semibold text-amber-800">
@@ -993,6 +992,38 @@ export default function TicketPurchaseForm({
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// What to show at the door: the order's QR code when we have it, otherwise
+// just their name — the board can always find them either way.
+function DoorPass({ ticketQr }: { ticketQr: string | null }) {
+  return (
+    <div className="rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
+      {ticketQr ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- inline data URL */}
+          <img
+            src={ticketQr}
+            alt="Your ticket QR code"
+            width={200}
+            height={200}
+            className="mx-auto mb-3 rounded bg-white"
+          />
+          <p className="text-sm font-bold text-sasa-red-900">
+            Show this QR code at the door — or just give your name.
+          </p>
+          <p className="mt-1 text-xs text-sasa-neutral-500">
+            Screenshot this, or use the one in your email.
+          </p>
+        </>
+      ) : (
+        <p className="text-sm font-bold text-sasa-red-900">
+          All you need at the door is your name — you don&apos;t need to
+          show a ticket or confirmation email.
+        </p>
       )}
     </div>
   );

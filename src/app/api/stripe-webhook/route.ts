@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         const ticketTypeName = metadata.ticketTypeName ?? "";
         const quantity = Number(metadata.quantity) || 1;
 
-        const { inserted } = await appendTicketToAirtable(
+        const { inserted, recordId } = await appendTicketToAirtable(
           {
             firstName: metadata.firstName ?? "",
             lastName: metadata.lastName ?? "",
@@ -113,6 +113,8 @@ export async function POST(req: NextRequest) {
             ticketTypeName,
             quantity,
             amountPaidCents: paymentIntent.amount,
+            recordId,
+            eventId: metadata.eventId ?? "",
           });
         }
       } else if (metadata.purchaseType === "membership") {

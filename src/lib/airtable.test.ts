@@ -269,8 +269,11 @@ describe("hasUsedMemberPricing", () => {
 
 describe("appendTicketToAirtable", () => {
   it("upserts a card order on its PaymentIntent id and reports a fresh insert", async () => {
-    fetchMock.mockResolvedValue(json({ createdRecords: ["rec1"], records: [] }));
-    expect(await appendTicketToAirtable(order, "pi_123")).toEqual({ inserted: true });
+    fetchMock.mockResolvedValue(json({ createdRecords: ["rec1"], records: [{ id: "rec1" }] }));
+    expect(await appendTicketToAirtable(order, "pi_123")).toEqual({
+      inserted: true,
+      recordId: "rec1",
+    });
 
     const init = fetchMock.mock.calls[0][1];
     expect(init?.method).toBe("PATCH");
@@ -293,8 +296,22 @@ describe("appendTicketToAirtable", () => {
   it("reports no insert when the upsert merged into an existing row", async () => {
     // The webhook and the /return page both write every card order; only
     // whichever call actually inserts is allowed to send the email.
-    fetchMock.mockResolvedValue(json({ createdRecords: [], updatedRecords: ["rec1"] }));
-    expect(await appendTicketToAirtable(order, "pi_123")).toEqual({ inserted: false });
+    fetchMock.mockResolvedValue(
+      json({ createdRecords: [], updatedRecords: ["rec1"], records: [{ id: "rec1" }] })
+    );
+    // Still returns the row's id, so the losing call can show the QR code too.
+    expect(await appendTicketToAirtable(order, "pi_123")).toEqual({
+      inserted: false,
+      recordId: "rec1",
+    });
+  });
+
+  it("returns a null record id when the upsert response has none", async () => {
+    fetchMock.mockResolvedValue(json({ createdRecords: ["rec1"] }));
+    expect(await appendTicketToAirtable(order, "pi_123")).toEqual({
+      inserted: true,
+      recordId: null,
+    });
   });
 
   it("plainly inserts an order with no PaymentIntent (cash, free, board +1)", async () => {
@@ -304,7 +321,7 @@ describe("appendTicketToAirtable", () => {
         { ...order, paymentMethod: "Cash", paid: false, memberYear: null },
         null
       )
-    ).toEqual({ inserted: true });
+    ).toEqual({ inserted: true, recordId: "rec1" });
 
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     const body = bodyOfCall() as { fields: Record<string, unknown> };

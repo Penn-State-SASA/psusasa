@@ -11,6 +11,8 @@ import {
   rosterKeyFromVirtualId,
 } from "@/lib/formerBoard";
 import { amountOwedCents, checkinUpdates, matchesSearch, psuIdOf } from "@/lib/checkin";
+import { parseTicketQr } from "@/lib/ticketQrPayload";
+import QrScanner, { type ScanStatus } from "@/components/checkin/QrScanner";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -47,6 +49,15 @@ export default function CheckinBoard({
   const [error, setError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState<TicketRecord | null>(null);
 
+  const [scanning, setScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  // A scanned ticket that needs a tap (cash, or a group) — the list shows
+  // just that row until it's done or staff choose "Show all".
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  // Set when a scan hands a ticket to the list: once that order is fully
+  // in, the camera comes back for the next guest instead of the keyboard.
+  const resumeScanRef = useRef(false);
+
   // At-door taps not yet reflected in `tickets`: those still waiting to be
   // sent, plus the batch whose request is out. Kept in refs for the sync
   // loop, mirrored in state for rendering. Negative means undos.
@@ -78,7 +89,9 @@ export default function CheckinBoard({
     }
   }
 
-  async function refetch() {
+  // Returns the list it fetched even when it doesn't apply it, so a scan
+  // can still find an order placed moments ago.
+  async function refetch(): Promise<TicketRecord[] | null> {
     const gen = atDoorSyncGenRef.current;
     const next = await fetchTickets();
     // Skip a list that overlapped an at-door sync — the sync applies its
@@ -86,6 +99,7 @@ export default function CheckinBoard({
     if (next && !atDoorSyncingRef.current && gen === atDoorSyncGenRef.current) {
       setTickets(next);
     }
+    return next;
   }
 
   // Multiple staff devices are likely at the door at once — poll so
@@ -96,10 +110,12 @@ export default function CheckinBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  // Resolves whether the update landed, for callers (like a scan) that
+  // report the result somewhere other than the board's error banner.
   async function sendMark(
     recordId: string,
     updates: { checkedInCount?: number; paid?: boolean }
-  ) {
+  ): Promise<boolean> {
     setPendingId(recordId);
     setError(null);
     setTickets((prev) =>
@@ -123,9 +139,11 @@ export default function CheckinBoard({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Failed to update.");
       }
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update.");
       refetch(); // revert any optimistic update that didn't actually land
+      return false;
     } finally {
       setPendingId(null);
     }
@@ -209,11 +227,87 @@ export default function CheckinBoard({
   }
 
   // Once an order is fully in, the door moves on to the next guest: clear
-  // the box and keep the keyboard up. Must run synchronously inside the
-  // tap/keypress, or iOS won't reopen the keyboard on focus().
+  // the box and keep the keyboard up — or, if that guest was scanned, bring
+  // the camera back. Must run synchronously inside the tap/keypress, or iOS
+  // won't reopen the keyboard on focus().
   function resetSearch() {
     setSearch("");
+    setPinnedId(null);
+    if (resumeScanRef.current) {
+      resumeScanRef.current = false;
+      openScanner();
+      return;
+    }
     searchRef.current?.focus();
+  }
+
+  function openScanner() {
+    setScanStatus(null);
+    setScanning(true);
+  }
+
+  function closeScanner() {
+    setScanning(false);
+    setScanStatus(null);
+  }
+
+  function showAll() {
+    setPinnedId(null);
+    resumeScanRef.current = false;
+  }
+
+  // A card-paid single ticket checks in on the spot and the camera stays up
+  // for the next guest. Anything that needs staff — cash to collect, a
+  // group arriving in stages — closes the camera and shows just that row.
+  // A scan never undoes a check-in.
+  async function handleScan(text: string) {
+    const scanned = parseTicketQr(text);
+    if (!scanned) {
+      setScanStatus({ tone: "error", message: "Not a SASA ticket" });
+      return;
+    }
+    if (scanned.eventId !== eventId) {
+      setScanStatus({ tone: "error", message: "This ticket is for a different event" });
+      return;
+    }
+
+    let ticket = tickets.find((t) => t.id === scanned.recordId);
+    if (!ticket) {
+      // Possibly bought moments ago. The refetch may not be applied (an
+      // at-door save in flight), so add just this row if it's missing.
+      const fresh = await refetch();
+      ticket = fresh?.find((t) => t.id === scanned.recordId);
+      if (ticket && !isAtDoorTicket(ticket)) {
+        const found = ticket;
+        setTickets((prev) => (prev.some((t) => t.id === found.id) ? prev : [...prev, found]));
+      }
+    }
+    if (!ticket || isAtDoorTicket(ticket)) {
+      setScanStatus({ tone: "error", message: "Not on this event's list" });
+      return;
+    }
+
+    const name = `${ticket.firstName} ${ticket.lastName}`;
+    if (ticket.checkedInCount >= ticket.quantity) {
+      setScanStatus({ tone: "warn", message: `Already checked in: ${name}` });
+      return;
+    }
+
+    if (ticket.quantity === 1 && ticket.paymentMethod === "Card") {
+      setScanStatus({ tone: "ok", message: `✓ ${name} checked in` });
+      navigator.vibrate?.(100);
+      const ok = await sendMark(ticket.id, checkinUpdates(ticket, 1));
+      if (!ok) {
+        setScanStatus({ tone: "error", message: `Couldn't check in ${name} — try again` });
+      }
+      return;
+    }
+
+    closeScanner();
+    setSearch("");
+    setPinnedId(ticket.id);
+    resumeScanRef.current = true;
+    if (ticket.quantity === 1) handleTap(ticket); // cash: opens Collect cash
   }
 
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
@@ -321,8 +415,11 @@ export default function CheckinBoard({
   }
 
   const filtered = useMemo(
-    () => tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
-    [tickets, search]
+    () =>
+      pinnedId
+        ? tickets.filter((t) => t.id === pinnedId)
+        : tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
+    [tickets, search, pinnedId]
   );
 
   // Everyone still to arrive first (partial parties included — they still
@@ -504,7 +601,10 @@ export default function CheckinBoard({
           ref={searchRef}
           type="search"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            showAll();
+          }}
           onKeyDown={handleSearchKeyDown}
           placeholder="Search by name, email, or PSU ID..."
           autoFocus
@@ -515,6 +615,15 @@ export default function CheckinBoard({
           spellCheck={false}
           className="w-full rounded border border-gray-300 px-4 py-3 text-base focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
         />
+        <button
+          onClick={openScanner}
+          className="flex shrink-0 items-center gap-1.5 rounded bg-sasa-red-900 px-4 py-2 text-sm font-semibold text-white hover:bg-sasa-red-700 transition-colors"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2M8 8h3v3H8zM13 13h3v3h-3zM13 8h3M8 13v3" />
+          </svg>
+          Scan
+        </button>
         {boardPlusOneEnabled && boardMembers.length > 0 && (
           <button
             onClick={() => setShowAddPlusOne(true)}
@@ -524,6 +633,27 @@ export default function CheckinBoard({
           </button>
         )}
       </div>
+
+      {pinnedId && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-sasa-gold-600/40 bg-sasa-gold-400/10 px-4 py-2 text-sm">
+          <span className="mr-auto font-medium text-sasa-red-900">Scanned ticket</span>
+          <button
+            onClick={showAll}
+            className="rounded border-2 border-sasa-gold-400 px-3 py-1 text-xs font-semibold text-sasa-gold-600 hover:bg-sasa-gold-400/10"
+          >
+            Show all
+          </button>
+          <button
+            onClick={() => {
+              showAll();
+              openScanner();
+            }}
+            className="rounded bg-sasa-red-900 px-3 py-1 text-xs font-semibold text-white hover:bg-sasa-red-700"
+          >
+            Scan next
+          </button>
+        </div>
+      )}
 
       {enterTarget && (
         <p className="-mt-2 mb-4 text-xs text-sasa-neutral-500">
@@ -650,6 +780,10 @@ export default function CheckinBoard({
           );
         })}
       </div>
+
+      {scanning && (
+        <QrScanner onDetect={handleScan} onClose={closeScanner} status={scanStatus} />
+      )}
 
       {confirmCash && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

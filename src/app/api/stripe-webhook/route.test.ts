@@ -86,7 +86,7 @@ const membershipMetadata = {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: "recAAAAAAAAAAAAAA" });
   vi.mocked(appendMemberToAirtable).mockResolvedValue({ inserted: true });
   muteConsole();
 });
@@ -139,14 +139,19 @@ describe("POST /api/stripe-webhook — ticket payments", () => {
       "pi_123"
     );
     expect(sendTicketConfirmationEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ contactEmail: "asha@example.com", amountPaidCents: 2573 })
+      expect.objectContaining({
+        contactEmail: "asha@example.com",
+        amountPaidCents: 2573,
+        recordId: "recAAAAAAAAAAAAAA",
+        eventId: "event-1",
+      })
     );
   });
 
   it("doesn't email again when the /return page already recorded the order", async () => {
     // The webhook and the return page race to write the same card order.
     // Only the one whose upsert actually inserts sends the confirmation.
-    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: false });
+    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: false, recordId: "recAAAAAAAAAAAAAA" });
     const res = await POST(signed(paymentSucceeded(ticketMetadata)));
     expect(res.status).toBe(200);
     expect(sendTicketConfirmationEmail).not.toHaveBeenCalled();
