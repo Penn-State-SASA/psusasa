@@ -4,11 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
-import {
-  AT_DOOR_TICKET_TYPE_KEY,
-  AT_DOOR_TICKET_TYPE_NAME,
-  isAtDoorTicket,
-} from "@/lib/atDoor";
+import { AT_DOOR_BATCH_MAX, isAtDoorTicket } from "@/lib/atDoor";
 import {
   isFormerBoardTicket,
   isFormerBoardVirtualId,
@@ -24,29 +20,6 @@ function formatPrice(cents: number): string {
 
 function formatProgress(p: { checkedIn: number; expected: number }): string {
   return `${p.checkedIn} / ${p.expected}`;
-}
-
-// Stand-in for an at-door sale while its request is in flight — the next
-// refetch swaps it for the real Airtable row.
-function pendingAtDoorSale(): TicketRecord {
-  return {
-    id: `at-door-pending:${Date.now()}`,
-    firstName: AT_DOOR_TICKET_TYPE_NAME,
-    lastName: "",
-    contactEmail: "",
-    psuEmail: "",
-    isMember: false,
-    memberYear: null,
-    ticketTypeKey: AT_DOOR_TICKET_TYPE_KEY,
-    ticketTypeName: AT_DOOR_TICKET_TYPE_NAME,
-    quantity: 1,
-    amountPaidCents: 0,
-    paymentMethod: "At Door",
-    paid: true,
-    checkedInCount: 1,
-    checkedInAt: null,
-    boardMemberName: null,
-  };
 }
 
 interface CheckinBoardProps {
@@ -73,7 +46,17 @@ export default function CheckinBoard({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState<TicketRecord | null>(null);
-  const [atDoorPending, setAtDoorPending] = useState(false);
+
+  // At-door taps not yet reflected in `tickets`: those still waiting to be
+  // sent, plus the batch whose request is out. Kept in refs for the sync
+  // loop, mirrored in state for rendering. Negative means undos.
+  const atDoorQueuedRef = useRef(0);
+  const atDoorInFlightRef = useRef(0);
+  const [atDoorOffset, setAtDoorOffset] = useState(0);
+  const atDoorSyncingRef = useRef(false);
+  // Bumped whenever an at-door sync starts or ends, so a poll that overlapped
+  // one can tell its list may predate the write and would roll it back.
+  const atDoorSyncGenRef = useRef(0);
 
   const [showAddPlusOne, setShowAddPlusOne] = useState(false);
   const [plusOneBoardMemberKey, setPlusOneBoardMemberKey] = useState("");
@@ -82,16 +65,26 @@ export default function CheckinBoard({
   const [plusOneSubmitting, setPlusOneSubmitting] = useState(false);
   const [plusOneError, setPlusOneError] = useState<string | null>(null);
 
-  async function refetch() {
+  async function fetchTickets(): Promise<TicketRecord[] | null> {
     try {
       const res = await fetch(`/api/checkin/${eventId}/tickets`, {
         cache: "no-store",
       });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const data = await res.json();
-      if (Array.isArray(data.tickets)) setTickets(data.tickets);
+      return Array.isArray(data.tickets) ? data.tickets : null;
     } catch {
-      // next poll will retry
+      return null; // next poll will retry
+    }
+  }
+
+  async function refetch() {
+    const gen = atDoorSyncGenRef.current;
+    const next = await fetchTickets();
+    // Skip a list that overlapped an at-door sync — the sync applies its
+    // own fresher one when it finishes.
+    if (next && !atDoorSyncingRef.current && gen === atDoorSyncGenRef.current) {
+      setTickets(next);
     }
   }
 
@@ -166,26 +159,52 @@ export default function CheckinBoard({
   }
 
   // At-door sales are nameless one-person rows, shown only as a counter:
-  // + records a new one, − deletes the most recent (from any device).
-  async function changeAtDoorSales(method: "POST" | "DELETE") {
-    setAtDoorPending(true);
+  // + records a new one, − deletes the most recent (from any device). A tap
+  // counts instantly and never locks the buttons; the sync loop sends taps
+  // in batches, so a party of five is one or two requests, not five.
+  function tapAtDoor(delta: 1 | -1) {
     setError(null);
-    setTickets((prev) => {
-      if (method === "POST") return [...prev, pendingAtDoorSale()];
-      const i = prev.findLastIndex(isAtDoorTicket);
-      return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
-    });
+    atDoorQueuedRef.current += delta;
+    setAtDoorOffset(atDoorQueuedRef.current + atDoorInFlightRef.current);
+    syncAtDoorSales();
+  }
+
+  async function syncAtDoorSales() {
+    if (atDoorSyncingRef.current) return; // the running loop picks up new taps
+    atDoorSyncingRef.current = true;
+    atDoorSyncGenRef.current++;
     try {
-      const res = await fetch(`/api/checkin/${eventId}/at-door`, { method });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to update at-door sales.");
+      while (atDoorQueuedRef.current !== 0) {
+        const queued = atDoorQueuedRef.current;
+        const batch = Math.sign(queued) * Math.min(Math.abs(queued), AT_DOOR_BATCH_MAX);
+        atDoorQueuedRef.current -= batch;
+        atDoorInFlightRef.current = batch;
+        try {
+          const res = await fetch(`/api/checkin/${eventId}/at-door`, {
+            method: batch > 0 ? "POST" : "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count: Math.abs(batch) }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error ?? "Failed to update at-door sales.");
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to update at-door sales.");
+          // Drop the taps still waiting too — after e.g. a capacity refusal
+          // they'd only fail the same way.
+          atDoorQueuedRef.current = 0;
+        }
+        // Swap the batch's offset for the server's rows in one render, so
+        // the count never double-counts or dips back down.
+        const next = await fetchTickets();
+        if (next) setTickets(next);
+        atDoorInFlightRef.current = 0;
+        setAtDoorOffset(atDoorQueuedRef.current);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update at-door sales.");
     } finally {
-      await refetch();
-      setAtDoorPending(false);
+      atDoorSyncingRef.current = false;
+      atDoorSyncGenRef.current++;
     }
   }
 
@@ -401,7 +420,11 @@ export default function CheckinBoard({
     };
   }, [tickets]);
 
-  const atCapacity = capacity !== null && stats.capacityUsed >= capacity;
+  // At-door rows are paid and checked in, so taps not yet synced count
+  // everywhere the rows themselves would.
+  const atDoorSales = stats.atDoorSales + atDoorOffset;
+  const capacityUsed = stats.capacityUsed + atDoorOffset;
+  const atCapacity = capacity !== null && capacityUsed >= capacity;
 
   return (
     <div>
@@ -410,12 +433,12 @@ export default function CheckinBoard({
           {eventTitle}
         </h1>
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Stat label="Tickets Sold" value={String(stats.totalSold)} />
-          <Stat label="Checked In" value={String(stats.totalCheckedIn)} />
+          <Stat label="Tickets Sold" value={String(stats.totalSold + atDoorOffset)} />
+          <Stat label="Checked In" value={String(stats.totalCheckedIn + atDoorOffset)} />
           {capacity !== null && (
             <Stat
               label="Capacity"
-              value={`${stats.capacityUsed} / ${capacity}`}
+              value={`${capacityUsed} / ${capacity}`}
               warn={atCapacity}
             />
           )}
@@ -439,8 +462,8 @@ export default function CheckinBoard({
           <p className="text-xs uppercase tracking-wide text-sasa-neutral-400">At-Door Sales</p>
           <div className="mt-1 flex items-center gap-2">
             <button
-              onClick={() => changeAtDoorSales("DELETE")}
-              disabled={atDoorPending || stats.atDoorSales <= 0}
+              onClick={() => tapAtDoor(-1)}
+              disabled={atDoorSales <= 0}
               aria-label="Undo at-door sale"
               className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
             >
@@ -450,11 +473,11 @@ export default function CheckinBoard({
               data-testid="at-door-count"
               className="min-w-[2.5rem] text-center text-lg font-semibold text-sasa-red-900"
             >
-              {stats.atDoorSales}
+              {atDoorSales}
             </span>
             <button
-              onClick={() => changeAtDoorSales("POST")}
-              disabled={atDoorPending || atCapacity}
+              onClick={() => tapAtDoor(1)}
+              disabled={atCapacity}
               aria-label="Add at-door sale"
               className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
             >

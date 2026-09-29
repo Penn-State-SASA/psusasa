@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CheckinBoard from "@/components/checkin/CheckinBoard";
 import type { TicketRecord } from "@/lib/airtable";
@@ -595,6 +595,11 @@ function atDoorSale(id: string): TicketRecord {
   });
 }
 
+/** Lets pending fetch mocks resolve and the board re-render. */
+async function settle() {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+}
+
 /** How many requests of the given method went to the at-door route. */
 function atDoorCalls(method: "POST" | "DELETE"): number {
   return fetchMock.mock.calls.filter(
@@ -701,6 +706,72 @@ describe("CheckinBoard — at-door sales", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Add at-door sale" })).toBeEnabled()
     );
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+  });
+
+  it("counts every tap while a sale is saving, then sends the rest as one batch", async () => {
+    let finishFirst!: () => void;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (!String(input).endsWith("/at-door")) return respond({ tickets: serverTickets });
+      if (atDoorCalls("POST") === 1) {
+        await new Promise<void>((resolve) => (finishFirst = resolve));
+      }
+      const { count } = JSON.parse(String(init?.body));
+      const n = serverTickets.length;
+      for (let i = 0; i < count; i++) serverTickets = [...serverTickets, atDoorSale(`rec-door-${n + i}`)];
+      return respond({ ok: true });
+    });
+    const user = userEvent.setup();
+    renderBoard([asha]);
+    const add = screen.getByRole("button", { name: "Add at-door sale" });
+
+    await user.click(add);
+    await user.click(add);
+    await user.click(add);
+
+    expect(add).toBeEnabled();
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("3");
+    expect(atDoorCalls("POST")).toBe(1);
+
+    finishFirst();
+    await settle();
+    expect(sent("/at-door")).toEqual([{ count: 1 }, { count: 2 }]);
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("3");
+  });
+
+  it("doesn't let a poll from before the sale landed roll the count back", async () => {
+    let finishSale!: () => void;
+    let finishPoll!: () => void;
+    let ticketFetches = 0;
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).endsWith("/at-door")) {
+        await new Promise<void>((resolve) => (finishSale = resolve));
+        return respond({ ok: true });
+      }
+      const snapshot = serverTickets;
+      if (++ticketFetches === 1) {
+        await new Promise<void>((resolve) => (finishPoll = resolve));
+      }
+      return respond({ tickets: snapshot });
+    });
+    const user = userEvent.setup();
+    renderBoard([asha]);
+
+    await user.click(screen.getByRole("button", { name: "Add at-door sale" }));
+    // A poll starts mid-save, reading the list from before the sale...
+    vi.advanceTimersByTime(3000);
+    expect(ticketFetches).toBe(1);
+
+    // ...the save finishes and the board confirms against the real list...
+    serverTickets = [asha, atDoorSale("rec-door-1")];
+    finishSale();
+    await settle();
+    expect(ticketFetches).toBe(2);
+    expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
+
+    // ...then the stale poll lands last, and is ignored.
+    finishPoll();
+    await settle();
     expect(screen.getByTestId("at-door-count")).toHaveTextContent("1");
   });
 

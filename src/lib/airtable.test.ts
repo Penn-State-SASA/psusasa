@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  appendAtDoorSale,
+  appendAtDoorSales,
   appendMemberToAirtable,
   appendTicketToAirtable,
-  deleteLatestAtDoorSale,
+  deleteLatestAtDoorSales,
   getTicketRecordInfo,
   hasUsedMemberPricing,
   listTicketsForEvent,
@@ -164,13 +164,20 @@ describe("sumCapacityUsed", () => {
   });
 });
 
-describe("appendAtDoorSale", () => {
-  it("inserts one nameless row that's already paid and checked in", async () => {
-    fetchMock.mockResolvedValue(json({ id: "rec1", fields: {} }));
-    await appendAtDoorSale({ eventId: "event-1", eventName: "Diwali Night", amountCents: 1500 });
+describe("appendAtDoorSales", () => {
+  it("inserts one nameless row per sale, already paid and checked in, in one request", async () => {
+    fetchMock.mockResolvedValue(json({ records: [] }));
+    await appendAtDoorSales(
+      { eventId: "event-1", eventName: "Diwali Night", amountCents: 1500 },
+      3
+    );
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
-    const fields = (bodyOfCall() as { fields: Record<string, unknown> }).fields;
+    const records = (bodyOfCall() as { records: Array<{ fields: Record<string, unknown> }> })
+      .records;
+    expect(records).toHaveLength(3);
+    const fields = records[0].fields;
     expect(fields).toMatchObject({
       "First Name": "At-Door Sale",
       "Last Name": "",
@@ -191,13 +198,13 @@ describe("appendAtDoorSale", () => {
   it("throws when Airtable rejects the write", async () => {
     fetchMock.mockResolvedValue(json({ error: "INVALID_VALUE" }, 422));
     await expect(
-      appendAtDoorSale({ eventId: "event-1", eventName: "Diwali Night", amountCents: 0 })
+      appendAtDoorSales({ eventId: "event-1", eventName: "Diwali Night", amountCents: 0 }, 1)
     ).rejects.toThrow(/Airtable error: 422/);
   });
 });
 
-describe("deleteLatestAtDoorSale", () => {
-  it("deletes the event's most recent at-door sale", async () => {
+describe("deleteLatestAtDoorSales", () => {
+  it("deletes the event's most recent at-door sales in one request", async () => {
     fetchMock
       .mockResolvedValueOnce(
         json({
@@ -208,17 +215,27 @@ describe("deleteLatestAtDoorSale", () => {
           ],
         })
       )
-      .mockResolvedValueOnce(json({ id: "recNew", deleted: true }));
+      .mockResolvedValueOnce(json({ records: [] }));
 
-    expect(await deleteLatestAtDoorSale("event-1")).toBe(true);
+    expect(await deleteLatestAtDoorSales("event-1", 2)).toBe(2);
     expect(formulaOfCall()).toBe("AND({Event ID} = 'event-1', {Ticket Type Key} = 'at-door')");
-    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/recNew$/);
+    const url = new URL(String(fetchMock.mock.calls[1][0]));
+    expect(url.searchParams.getAll("records[]")).toEqual(["recNew", "recMid"]);
     expect(fetchMock.mock.calls[1][1]?.method).toBe("DELETE");
   });
 
-  it("returns false without deleting when there are none", async () => {
+  it("deletes only what's there when asked for more", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ records: [{ id: "rec1", fields: {} }] }))
+      .mockResolvedValueOnce(json({ records: [] }));
+    expect(await deleteLatestAtDoorSales("event-1", 3)).toBe(1);
+    const url = new URL(String(fetchMock.mock.calls[1][0]));
+    expect(url.searchParams.getAll("records[]")).toEqual(["rec1"]);
+  });
+
+  it("returns 0 without deleting when there are none", async () => {
     fetchMock.mockResolvedValue(json({ records: [] }));
-    expect(await deleteLatestAtDoorSale("event-1")).toBe(false);
+    expect(await deleteLatestAtDoorSales("event-1", 1)).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -226,7 +243,7 @@ describe("deleteLatestAtDoorSale", () => {
     fetchMock
       .mockResolvedValueOnce(json({ records: [{ id: "rec1", fields: {} }] }))
       .mockResolvedValueOnce(json({ error: "NOT_FOUND" }, 404));
-    await expect(deleteLatestAtDoorSale("event-1")).rejects.toThrow(/Airtable error: 404/);
+    await expect(deleteLatestAtDoorSales("event-1", 1)).rejects.toThrow(/Airtable error: 404/);
   });
 });
 

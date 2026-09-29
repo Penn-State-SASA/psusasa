@@ -9,6 +9,10 @@ import type { TicketRecord } from "@/lib/airtable";
 export const AT_DOOR_TICKET_TYPE_KEY = "at-door";
 export const AT_DOOR_TICKET_TYPE_NAME = "At-Door Sale";
 
+// Most sales added or undone in one request — Airtable creates or deletes
+// at most 10 records per call.
+export const AT_DOOR_BATCH_MAX = 10;
+
 export function isAtDoorTicket(t: Pick<TicketRecord, "ticketTypeKey">): boolean {
   return t.ticketTypeKey === AT_DOOR_TICKET_TYPE_KEY;
 }

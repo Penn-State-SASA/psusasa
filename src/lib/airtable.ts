@@ -351,11 +351,12 @@ export interface AtDoorSale {
   amountCents: number;
 }
 
-// One walk-up sale tapped in on the check-in board: a nameless row that's
-// already paid and checked in. Each tap is its own row (rather than a
+// Walk-up sales tapped in on the check-in board: nameless rows that are
+// already paid and checked in. Each sale is its own row (rather than a
 // counter on one row) so several door devices can add sales at once
-// without overwriting each other.
-export async function appendAtDoorSale(sale: AtDoorSale): Promise<void> {
+// without overwriting each other. Several quick taps arrive as one batch
+// of up to AT_DOOR_BATCH_MAX rows, written in a single request.
+export async function appendAtDoorSales(sale: AtDoorSale, count: number): Promise<void> {
   const now = new Date().toISOString();
   const fields = {
     Timestamp: now,
@@ -385,7 +386,7 @@ export async function appendAtDoorSale(sale: AtDoorSale): Promise<void> {
       Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify({ records: Array.from({ length: count }, () => ({ fields })) }),
   });
 
   if (!res.ok) {
@@ -394,18 +395,23 @@ export async function appendAtDoorSale(sale: AtDoorSale): Promise<void> {
   }
 }
 
-// Undo for a mis-tapped at-door sale: deletes the event's most recent one.
-// Returns false if there were none left to delete.
-export async function deleteLatestAtDoorSale(eventId: string): Promise<boolean> {
+// Undo for mis-tapped at-door sales: deletes the event's `count` most
+// recent ones (up to AT_DOOR_BATCH_MAX) in a single request. Returns how
+// many were deleted — fewer than asked, or 0, when there weren't enough.
+export async function deleteLatestAtDoorSales(eventId: string, count: number): Promise<number> {
   const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${AT_DOOR_TICKET_TYPE_KEY}')`;
   const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
-  if (records.length === 0) return false;
+  if (records.length === 0) return 0;
 
-  const latest = records.reduce((a, b) =>
-    String(b.fields["Timestamp"] ?? "") > String(a.fields["Timestamp"] ?? "") ? b : a
-  );
+  const latest = [...records]
+    .sort((a, b) =>
+      String(b.fields["Timestamp"] ?? "").localeCompare(String(a.fields["Timestamp"] ?? ""))
+    )
+    .slice(0, count);
 
-  const res = await fetch(`${ticketsBaseUrl()}/${latest.id}`, {
+  const url = new URL(ticketsBaseUrl());
+  for (const r of latest) url.searchParams.append("records[]", r.id);
+  const res = await fetch(url.toString(), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` },
   });
@@ -414,7 +420,7 @@ export async function deleteLatestAtDoorSale(eventId: string): Promise<boolean> 
     const body = await res.text();
     throw new Error(`Airtable error: ${res.status} ${body}`);
   }
-  return true;
+  return latest.length;
 }
 
 // A person gets member pricing on at most 1 ticket per event, ever —
