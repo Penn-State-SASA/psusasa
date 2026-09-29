@@ -46,7 +46,7 @@ async function visit(searchParams: { payment_intent?: string } = { payment_inten
 beforeEach(() => {
   vi.resetAllMocks();
   paymentIntentsRetrieve.mockResolvedValue(paymentIntent());
-  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: "recAAAAAAAAAAAAAA" });
   muteConsole();
 });
 
@@ -63,8 +63,23 @@ describe("tickets return page", () => {
       expect.objectContaining({ eventId: "event-1", amountPaidCents: 1061, paid: true }),
       "pi_123"
     );
-    expect(sendTicketConfirmationEmail).toHaveBeenCalledTimes(1);
+    expect(sendTicketConfirmationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: "recAAAAAAAAAAAAAA", eventId: "event-1" })
+    );
     expect(html).toContain("You&#x27;re going!");
+  });
+
+  it("shows the door QR code for the order", async () => {
+    const html = await visit();
+    expect(html).toMatch(/<img[^>]+src="data:image\/png;base64,[^"]+"[^>]*alt="Your ticket QR code"/);
+    expect(html).toContain("Show this QR code at the door");
+  });
+
+  it("falls back to name-at-the-door when there's no record id to encode", async () => {
+    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: null });
+    const html = await visit();
+    expect(html).not.toContain("QR code");
+    expect(html).toContain("All you need at the door is your name");
   });
 
   it("shows what Stripe actually charged, with the member split as recorded", async () => {
@@ -76,9 +91,11 @@ describe("tickets return page", () => {
   });
 
   it("doesn't email again when the webhook already recorded the order", async () => {
-    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: false });
-    await visit();
+    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: false, recordId: "recAAAAAAAAAAAAAA" });
+    const html = await visit();
     expect(sendTicketConfirmationEmail).not.toHaveBeenCalled();
+    // The buyer still sees their QR code even though the webhook won the race.
+    expect(html).toContain("Your ticket QR code");
   });
 
   it("records nothing for a membership payment pasted into the URL", async () => {

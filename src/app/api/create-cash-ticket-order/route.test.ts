@@ -6,7 +6,10 @@ import {
   hasUsedMemberPricing,
   lookupCurrentMember,
 } from "@/lib/airtable";
-import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import {
+  sendCashOrderConfirmationEmail,
+  sendTicketConfirmationEmail,
+} from "@/lib/ticketEmail";
 import { PSU_CONTACT_EMAIL_ERROR } from "@/lib/email";
 import { makeEvent, makeTicketType } from "@/test/factories";
 import { jsonRequest } from "@/test/request";
@@ -14,7 +17,13 @@ import { muteConsole } from "@/test/console";
 
 vi.mock("../../../../sanity/lib/client", () => ({ sanityFetchSingle: vi.fn(), sanityFetch: vi.fn() }));
 vi.mock("@/lib/airtable");
-vi.mock("@/lib/ticketEmail", () => ({ sendTicketConfirmationEmail: vi.fn() }));
+vi.mock("@/lib/ticketEmail", () => ({
+  sendTicketConfirmationEmail: vi.fn(),
+  sendCashOrderConfirmationEmail: vi.fn(),
+}));
+
+const RECORD_ID = "recAAAAAAAAAAAAAA";
+const QR_DATA_URL = expect.stringMatching(/^data:image\/png;base64,/);
 
 const ga = makeTicketType({ _key: "ga", memberPriceCents: 1000, nonMemberPriceCents: 1500 });
 
@@ -37,7 +46,7 @@ beforeEach(() => {
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
   vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
-  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: RECORD_ID });
   muteConsole();
 });
 
@@ -51,6 +60,7 @@ describe("POST /api/create-cash-ticket-order", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
+      ticketQr: QR_DATA_URL,
       eventName: "Diwali Night",
       ticketTypeName: "General Admission",
       quantity: 2,
@@ -69,9 +79,24 @@ describe("POST /api/create-cash-ticket-order", () => {
     );
   });
 
-  it("sends no confirmation email for an order that isn't paid yet", async () => {
+  it("emails a 'bring cash' confirmation with the order's QR code, not the paid one", async () => {
     await reserve();
+    expect(sendCashOrderConfirmationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactEmail: "asha@example.com",
+        amountDueCents: 3000,
+        quantity: 2,
+        recordId: RECORD_ID,
+        eventId: "event-1",
+      })
+    );
     expect(sendTicketConfirmationEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns no QR code when Airtable gave no record id", async () => {
+    vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: null });
+    const res = await reserve();
+    expect((await res.json()).ticketQr).toBeNull();
   });
 
   it("applies the one-seat member discount the same way the card route does", async () => {
@@ -104,12 +129,15 @@ describe("POST /api/create-cash-ticket-order", () => {
 
     const res = await reserve({ quantity: 1, psuEmail: "abc123@psu.edu" });
 
-    expect(await res.json()).toMatchObject({ free: true });
+    expect(await res.json()).toMatchObject({ free: true, ticketQr: QR_DATA_URL });
     expect(appendTicketToAirtable).toHaveBeenCalledWith(
       expect.objectContaining({ paid: true, amountPaidCents: 0 }),
       null
     );
-    expect(sendTicketConfirmationEmail).toHaveBeenCalledTimes(1);
+    expect(sendTicketConfirmationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: RECORD_ID, eventId: "event-1" })
+    );
+    expect(sendCashOrderConfirmationEmail).not.toHaveBeenCalled();
   });
 
   it("returns a 500 when the Airtable write fails", async () => {

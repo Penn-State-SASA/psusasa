@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import { sendCashOrderConfirmationEmail, sendTicketConfirmationEmail } from "@/lib/ticketEmail";
 import { MEMBERSHIP_FROM, REPLY_TO, TICKETS_FROM } from "@/lib/emailSender";
+import { ticketQrPng } from "@/lib/ticketQr";
 import { muteConsole } from "@/test/console";
 
 const { send, constructed } = vi.hoisted(() => ({ send: vi.fn(), constructed: vi.fn() }));
+
+vi.mock("@/lib/ticketQr", () => ({ ticketQrPng: vi.fn() }));
+const QR_PNG = Buffer.from("fake-png");
 
 vi.mock("resend", () => ({
   Resend: class {
@@ -26,6 +30,7 @@ const details = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("RESEND_API_KEY", "re_test");
+  vi.mocked(ticketQrPng).mockResolvedValue(QR_PNG);
   muteConsole();
 });
 
@@ -81,6 +86,80 @@ describe("sendTicketConfirmationEmail", () => {
     send.mockResolvedValue({ data: { id: "email_1" }, error: null });
     await sendTicketConfirmationEmail({ ...details, firstName: "  " });
     expect(send.mock.calls[0][0].text).toMatch(/^Hi,\n/);
+  });
+
+  it("includes the door QR code inline when it knows the order", async () => {
+    send.mockResolvedValue({ data: { id: "email_1" }, error: null });
+    await sendTicketConfirmationEmail({ ...details, recordId: "recAAAAAAAAAAAAAA", eventId: "event-1" });
+
+    expect(ticketQrPng).toHaveBeenCalledWith("recAAAAAAAAAAAAAA", "event-1");
+    const msg = send.mock.calls[0][0];
+    expect(msg.attachments).toEqual([
+      { filename: "ticket-qr.png", content: QR_PNG, contentId: "ticket-qr" },
+    ]);
+    expect(msg.html).toContain('src="cid:ticket-qr"');
+    expect(msg.text).toContain("Show the QR code in this email at the door");
+  });
+
+  it("sends without a QR code when it doesn't know the order", async () => {
+    send.mockResolvedValue({ data: { id: "email_1" }, error: null });
+    await sendTicketConfirmationEmail(details);
+
+    expect(ticketQrPng).not.toHaveBeenCalled();
+    const msg = send.mock.calls[0][0];
+    expect(msg.attachments).toBeUndefined();
+    expect(msg.html).not.toContain("cid:");
+  });
+
+  it("still sends the confirmation when the QR code can't be made", async () => {
+    vi.mocked(ticketQrPng).mockRejectedValue(new Error("qr broke"));
+    send.mockResolvedValue({ data: { id: "email_1" }, error: null });
+
+    expect(
+      await sendTicketConfirmationEmail({ ...details, recordId: "recAAAAAAAAAAAAAA", eventId: "event-1" })
+    ).toBe(true);
+    expect(send.mock.calls[0][0].attachments).toBeUndefined();
+  });
+
+  it("escapes names in the html body", async () => {
+    send.mockResolvedValue({ data: { id: "email_1" }, error: null });
+    await sendTicketConfirmationEmail({ ...details, eventName: "<b>Garba</b> & Dandiya" });
+    expect(send.mock.calls[0][0].html).toContain("&lt;b&gt;Garba&lt;/b&gt; &amp; Dandiya");
+  });
+});
+
+describe("sendCashOrderConfirmationEmail", () => {
+  const cash = {
+    contactEmail: "dev@example.com",
+    firstName: "Dev",
+    eventName: "Garba Night",
+    ticketTypeName: "General Admission",
+    quantity: 3,
+    amountDueCents: 4500,
+    recordId: "recBBBBBBBBBBBBBB",
+    eventId: "event-1",
+  };
+
+  it("tells them they're on the list, how much cash to bring, and includes the QR code", async () => {
+    send.mockResolvedValue({ data: { id: "email_2" }, error: null });
+    expect(await sendCashOrderConfirmationEmail(cash)).toBe(true);
+
+    const msg = send.mock.calls[0][0];
+    expect(msg).toMatchObject({
+      from: TICKETS_FROM,
+      replyTo: REPLY_TO,
+      to: "dev@example.com",
+      subject: "You're on the list for Garba Night",
+    });
+    expect(msg.text).toContain("Ticket: 3x General Admission");
+    expect(msg.text).toContain("Bring $45.00 in cash to the door.");
+    expect(msg.text).toContain("No cash, no entry");
+    expect(msg.attachments?.[0]).toMatchObject({ contentId: "ticket-qr" });
+  });
+
+  it("reports failure when Resend answers with an error", async () => {
+    send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
+    expect(await sendCashOrderConfirmationEmail(cash)).toBe(false);
   });
 });
 

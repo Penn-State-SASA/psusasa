@@ -4,6 +4,7 @@ import { resolveTicketOrder, TicketOrderError } from "@/lib/ticketing";
 import { computeCardFee } from "@/lib/fees";
 import { appendTicketToAirtable } from "@/lib/airtable";
 import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import { ticketQrDataUrlOrNull } from "@/lib/ticketQr";
 import { EMAIL_RE, isPsuEmail, PSU_CONTACT_EMAIL_ERROR } from "@/lib/email";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
     // minimum chargeable amount anyway. Skip Stripe entirely and confirm
     // directly, same as a cash order but pre-paid/settled.
     if (order.subtotalCents === 0) {
-      await appendTicketToAirtable(
+      const { recordId } = await appendTicketToAirtable(
         {
           firstName: trimmedFirst.slice(0, 500),
           lastName: trimmedLast.slice(0, 500),
@@ -93,10 +94,13 @@ export async function POST(req: NextRequest) {
         ticketTypeName: order.ticketType.name,
         quantity: order.quantity,
         amountPaidCents: 0,
+        recordId,
+        eventId: order.event._id,
       });
 
       return NextResponse.json({
         free: true,
+        ticketQr: await ticketQrDataUrlOrNull(recordId, order.event._id),
         isMember: order.isMember,
         memberUnits: order.memberUnits,
         nonMemberUnits: order.nonMemberUnits,

@@ -201,11 +201,12 @@ export interface TicketOrderMetadata {
 // redelivery to dedupe against, so it always plainly inserts.
 // Returns whether this call actually created a new row (vs. merging into
 // an existing one) — callers use `inserted` to make sure a confirmation
-// email only goes out once, from whichever of the two wins the race.
+// email only goes out once, from whichever of the two wins the race — and
+// the row's record id either way, which is what the ticket's QR code holds.
 export async function appendTicketToAirtable(
   order: TicketOrderMetadata,
   paymentIntentId: string | null
-): Promise<{ inserted: boolean }> {
+): Promise<{ inserted: boolean; recordId: string | null }> {
   const baseUrl = ticketsBaseUrl();
 
   const fields = {
@@ -247,14 +248,18 @@ export async function appendTicketToAirtable(
       throw new Error(`Airtable error: ${res.status} ${body}`);
     }
 
-    const data = (await res.json()) as { createdRecords?: string[] };
+    // The upsert returns the row in `records` whether it created or merged it.
+    const data = (await res.json()) as {
+      createdRecords?: string[];
+      records?: Array<{ id?: string }>;
+    };
     const inserted = (data.createdRecords?.length ?? 0) > 0;
     console.log(
       inserted
         ? `Ticket order for ${order.contactEmail} added to Airtable`
         : `Ticket order already in Airtable (${paymentIntentId})`
     );
-    return { inserted };
+    return { inserted, recordId: data.records?.[0]?.id ?? null };
   }
 
   const res = await fetch(baseUrl, {
@@ -271,8 +276,9 @@ export async function appendTicketToAirtable(
     throw new Error(`Airtable error: ${res.status} ${body}`);
   }
 
+  const data = (await res.json()) as { id?: string };
   console.log(`Ticket order for ${order.contactEmail} added to Airtable`);
-  return { inserted: true };
+  return { inserted: true, recordId: data.id ?? null };
 }
 
 export interface FormerBoardCheckin {

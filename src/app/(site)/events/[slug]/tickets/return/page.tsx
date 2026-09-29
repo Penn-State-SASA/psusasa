@@ -3,6 +3,7 @@ import Link from "next/link";
 import Stripe from "stripe";
 import { appendTicketToAirtable } from "@/lib/airtable";
 import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import { ticketQrDataUrlOrNull } from "@/lib/ticketQr";
 import { breakdownLabel, splitFromMetadata } from "@/lib/ticketLabels";
 
 export const metadata: Metadata = {
@@ -52,12 +53,14 @@ export default async function TicketsReturnPage({
   const { memberUnits, nonMemberUnits } = splitFromMetadata(m, quantity);
   const priceLabel = breakdownLabel(memberUnits, nonMemberUnits);
 
+  let ticketQr: string | null = null;
+
   // Requires the ticket tag, not just any succeeded payment — the id comes
   // from the query string, so an unguarded write would record a ticket for
   // whatever payment was named here (see the same guard on /join/return).
   if (isComplete && m.purchaseType === "ticket") {
     try {
-      const { inserted } = await appendTicketToAirtable(
+      const { inserted, recordId } = await appendTicketToAirtable(
         {
           firstName: m.firstName ?? "",
           lastName: m.lastName ?? "",
@@ -89,8 +92,14 @@ export default async function TicketsReturnPage({
           ticketTypeName,
           quantity,
           amountPaidCents: amountCents,
+          recordId,
+          eventId: m.eventId ?? "",
         });
       }
+
+      // The upsert returns the row even when the webhook inserted it, so
+      // the buyer always gets their QR code here.
+      ticketQr = await ticketQrDataUrlOrNull(recordId, m.eventId);
     } catch (err) {
       console.error("Ticket Airtable write failed:", err);
     }
@@ -133,12 +142,29 @@ export default async function TicketsReturnPage({
                 will be sent to the address you provided.
               </p>
 
-              <div className="mx-auto mb-6 max-w-sm rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
-                <p className="text-sm font-bold text-sasa-red-900">
-                  All you need at the door is your name — you don&apos;t need
-                  to show a ticket or confirmation email.
-                </p>
-              </div>
+              {ticketQr ? (
+                <div className="mx-auto mb-6 max-w-sm rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- inline data URL */}
+                  <img
+                    src={ticketQr}
+                    alt="Your ticket QR code"
+                    width={200}
+                    height={200}
+                    className="mx-auto mb-3 rounded bg-white"
+                  />
+                  <p className="text-sm font-bold text-sasa-red-900">
+                    Show this QR code at the door (it&apos;s in your email
+                    too) — or just give your name.
+                  </p>
+                </div>
+              ) : (
+                <div className="mx-auto mb-6 max-w-sm rounded-lg border-2 border-sasa-gold-400 bg-sasa-gold-400/10 p-4">
+                  <p className="text-sm font-bold text-sasa-red-900">
+                    All you need at the door is your name — you don&apos;t need
+                    to show a ticket or confirmation email.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <Link

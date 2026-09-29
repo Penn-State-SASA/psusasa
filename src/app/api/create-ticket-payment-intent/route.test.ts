@@ -42,7 +42,10 @@ beforeEach(() => {
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
   vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
-  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendTicketToAirtable).mockResolvedValue({
+    inserted: true,
+    recordId: "recAAAAAAAAAAAAAA",
+  });
   paymentIntentsCreate.mockResolvedValue({ client_secret: "pi_123_secret_abc" });
   muteConsole();
 });
@@ -159,14 +162,24 @@ describe("POST /api/create-ticket-payment-intent — free orders", () => {
     const res = await buy({ psuEmail: "abc123@psu.edu" });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ free: true, totalCents: 0, feeCents: 0 });
+    expect(await res.json()).toMatchObject({
+      free: true,
+      totalCents: 0,
+      feeCents: 0,
+      ticketQr: expect.stringMatching(/^data:image\/png;base64,/),
+    });
     expect(paymentIntentsCreate).not.toHaveBeenCalled();
     expect(appendTicketToAirtable).toHaveBeenCalledWith(
       expect.objectContaining({ amountPaidCents: 0, paid: true, isMember: true }),
       null
     );
     expect(sendTicketConfirmationEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ contactEmail: "asha@example.com", amountPaidCents: 0 })
+      expect.objectContaining({
+        contactEmail: "asha@example.com",
+        amountPaidCents: 0,
+        recordId: "recAAAAAAAAAAAAAA",
+        eventId: "event-1",
+      })
     );
   });
 

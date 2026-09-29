@@ -45,7 +45,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   sanityReturns(makeEvent({ boardPlusOneEnabled: true }));
   vi.mocked(listTicketsForEvent).mockResolvedValue([]);
-  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: "recGUESTGUESTGUES" });
   muteConsole();
 });
 
