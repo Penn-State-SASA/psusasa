@@ -70,11 +70,19 @@ function htmlBody(lines: string[], withQr: boolean): string {
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#222">${qr}<p>${body}</p></div>`;
 }
 
+// Only point at a QR code the email actually has — if it couldn't be made,
+// fall back to the name-at-the-door wording the emails used before QR codes.
+function doorLine(hasQr: boolean): string {
+  return hasQr
+    ? "Show the QR code in this email at the door."
+    : "No need to bring anything printed — just give your name at the door and we'll check you in.";
+}
+
 async function sendTicketEmail(
   kind: string,
   to: string,
   subject: string,
-  lines: string[],
+  buildLines: (hasQr: boolean) => string[],
   ids: TicketQrIds
 ): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -89,6 +97,7 @@ async function sendTicketEmail(
 
   const resend = new Resend(apiKey);
   const qr = await qrAttachment(ids);
+  const lines = buildLines(qr !== null);
 
   try {
     // The SDK resolves with { data: null, error } on an API error rather
@@ -131,7 +140,7 @@ export async function sendTicketConfirmationEmail(
     "Ticket confirmation",
     details.contactEmail,
     `Your ticket to ${details.eventName} is confirmed!`,
-    [
+    (hasQr) => [
       greetingFor(details.firstName),
       "",
       "Your ticket purchase is confirmed:",
@@ -140,7 +149,7 @@ export async function sendTicketConfirmationEmail(
       `Ticket: ${details.quantity}x ${details.ticketTypeName}`,
       `Amount paid: ${formatPrice(details.amountPaidCents)}`,
       "",
-      "Show the QR code in this email at the door — or just give your name.",
+      doorLine(hasQr),
       "",
       "See you there!",
       "SASA",
@@ -159,7 +168,7 @@ export async function sendCashOrderConfirmationEmail(
     "Cash order confirmation",
     details.contactEmail,
     `You're on the list for ${details.eventName}`,
-    [
+    (hasQr) => [
       greetingFor(details.firstName),
       "",
       "You're on the list:",
@@ -168,7 +177,7 @@ export async function sendCashOrderConfirmationEmail(
       `Ticket: ${details.quantity}x ${details.ticketTypeName}`,
       `Bring ${formatPrice(details.amountDueCents)} in cash to the door.`,
       "",
-      "Show the QR code in this email at the door — or just give your name.",
+      doorLine(hasQr),
       "",
       "No cash, no entry — you will not be admitted without payment. Exact",
       "change is recommended; we can't guarantee change will be available at",

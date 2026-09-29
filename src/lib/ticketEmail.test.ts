@@ -98,7 +98,8 @@ describe("sendTicketConfirmationEmail", () => {
       { filename: "ticket-qr.png", content: QR_PNG, contentId: "ticket-qr" },
     ]);
     expect(msg.html).toContain('src="cid:ticket-qr"');
-    expect(msg.text).toContain("Show the QR code in this email at the door");
+    expect(msg.text).toContain("Show the QR code in this email at the door.");
+    expect(msg.text).not.toContain("give your name");
   });
 
   it("sends without a QR code when it doesn't know the order", async () => {
@@ -109,6 +110,9 @@ describe("sendTicketConfirmationEmail", () => {
     const msg = send.mock.calls[0][0];
     expect(msg.attachments).toBeUndefined();
     expect(msg.html).not.toContain("cid:");
+    // Never points at a QR code the email doesn't have.
+    expect(msg.text).not.toContain("QR code");
+    expect(msg.text).toContain("just give your name at the door");
   });
 
   it("still sends the confirmation when the QR code can't be made", async () => {
@@ -119,6 +123,7 @@ describe("sendTicketConfirmationEmail", () => {
       await sendTicketConfirmationEmail({ ...details, recordId: "recAAAAAAAAAAAAAA", eventId: "event-1" })
     ).toBe(true);
     expect(send.mock.calls[0][0].attachments).toBeUndefined();
+    expect(send.mock.calls[0][0].text).toContain("just give your name at the door");
   });
 
   it("escapes names in the html body", async () => {
@@ -154,6 +159,8 @@ describe("sendCashOrderConfirmationEmail", () => {
     expect(msg.text).toContain("Ticket: 3x General Admission");
     expect(msg.text).toContain("Bring $45.00 in cash to the door.");
     expect(msg.text).toContain("No cash, no entry");
+    expect(msg.text).toContain("Show the QR code in this email at the door.");
+    expect(msg.text).not.toContain("give your name");
     expect(msg.attachments?.[0]).toMatchObject({ contentId: "ticket-qr" });
   });
 
