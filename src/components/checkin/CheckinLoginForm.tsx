@@ -40,10 +40,14 @@ export default function CheckinLoginForm({ eventId }: CheckinLoginFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium text-sasa-red-900">
+        <label
+          htmlFor="checkin-password"
+          className="mb-1 block text-sm font-medium text-sasa-red-900"
+        >
           Password
         </label>
         <input
+          id="checkin-password"
           type="password"
           autoFocus
           value={password}

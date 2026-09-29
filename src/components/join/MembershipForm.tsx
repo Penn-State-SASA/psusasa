@@ -16,11 +16,21 @@ import {
 } from "react-phone-number-input";
 import flags from "react-phone-number-input/flags";
 import en from "react-phone-number-input/locale/en.json";
-import { AsYouType } from "libphonenumber-js";
 import { PortableText } from "@portabletext/react";
 import type { PortableTextBlock } from "@portabletext/types";
 import type { MembershipFormCopy } from "../../../sanity/lib/types";
 import { computeCardFee } from "@/lib/fees";
+import {
+  formatNationalNumber,
+  NANP_COUNTRIES,
+  nanpDigitLimit,
+  reconcileMulti,
+  reconcileSingle,
+  resolveMulti,
+  resolveSingle,
+  type OtherableMulti,
+  type OtherableSingle,
+} from "@/lib/membershipForm";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -34,16 +44,6 @@ interface Step1 {
   psuEmail: string;
   phone: string;
   year: string;
-}
-
-interface OtherableSingle {
-  selected: string;
-  otherText: string;
-}
-
-interface OtherableMulti {
-  selected: string[];
-  otherText: string;
 }
 
 interface Step2 {
@@ -205,25 +205,6 @@ const PT_COMPONENTS = {
   },
 };
 
-function resolveMulti(f: OtherableMulti): string {
-  const vals = [...f.selected];
-  if (vals.includes("Other") && f.otherText.trim()) {
-    const idx = vals.indexOf("Other");
-    vals[idx] = f.otherText.trim();
-  } else {
-    const idx = vals.indexOf("Other");
-    if (idx !== -1) vals.splice(idx, 1);
-  }
-  return vals.join(", ").slice(0, 500);
-}
-
-function resolveSingle(f: OtherableSingle): string {
-  return (f.selected === "Other" ? f.otherText.trim() : f.selected).slice(
-    0,
-    500
-  );
-}
-
 const STORAGE_KEY = "sasa-membership-form-v1";
 
 interface PersistedForm {
@@ -261,26 +242,6 @@ interface ResolvedOptions {
   generation: string[];
 }
 
-function reconcileSingle(
-  f: OtherableSingle,
-  validValues: string[]
-): OtherableSingle {
-  if (f.selected === "" || f.selected === "Other") return f;
-  return validValues.includes(f.selected)
-    ? f
-    : { selected: "", otherText: "" };
-}
-
-function reconcileMulti(
-  f: OtherableMulti,
-  validValues: string[]
-): OtherableMulti {
-  const filtered = f.selected.filter(
-    (v) => v === "Other" || validValues.includes(v)
-  );
-  return { selected: filtered, otherText: f.otherText };
-}
-
 function reconcilePersisted(
   p: PersistedForm,
   opts: ResolvedOptions
@@ -299,51 +260,6 @@ function reconcilePersisted(
       generation: reconcileSingle(p.step2.generation, opts.generation),
     },
   };
-}
-
-const NANP_COUNTRIES = new Set<Country>([
-  "US",
-  "CA",
-  "AG",
-  "AI",
-  "AS",
-  "BB",
-  "BM",
-  "BS",
-  "DM",
-  "DO",
-  "GD",
-  "GU",
-  "JM",
-  "KN",
-  "KY",
-  "LC",
-  "MP",
-  "MS",
-  "PR",
-  "SX",
-  "TC",
-  "TT",
-  "VC",
-  "VG",
-  "VI",
-]);
-
-function formatNationalNumber(digits: string, country: Country): string {
-  if (!digits) return "";
-  if (NANP_COUNTRIES.has(country)) {
-    const d = digits.slice(0, 10);
-    if (d.length === 0) return "";
-    if (d.length <= 3) return `(${d}`;
-    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
-    return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  }
-  const formatter = new AsYouType(country);
-  return formatter.input(digits) || digits;
-}
-
-function nanpDigitLimit(country: Country): number | null {
-  return NANP_COUNTRIES.has(country) ? 10 : null;
 }
 
 // Every country the phone library supports, sorted alphabetically by name.

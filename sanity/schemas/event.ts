@@ -1,4 +1,5 @@
 import { defineField, defineType } from "sanity";
+import FormerBoardFreeEntryInput from "../components/FormerBoardFreeEntryInput";
 
 export default defineType({
   name: "event",
@@ -124,13 +125,6 @@ export default defineType({
               validation: (Rule) => Rule.required().integer().min(0),
             },
             {
-              name: "capacity",
-              title: "Capacity",
-              description: "Max tickets of this type. Leave blank for unlimited.",
-              type: "number",
-              validation: (Rule) => Rule.integer().min(1),
-            },
-            {
               name: "salesOpen",
               title: "Sales Open",
               description:
@@ -158,6 +152,24 @@ export default defineType({
       ],
     }),
     defineField({
+      name: "capacity",
+      title: "Event Capacity",
+      type: "number",
+      description:
+        "Max people for the whole event, across all ticket types. Leave blank for unlimited. Paid tickets, at-door sales, and board +1s count toward this; former board and unpaid cash-at-the-door orders don't.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      validation: (Rule) => Rule.integer().min(1),
+    }),
+    defineField({
+      name: "atDoorPriceCents",
+      title: "At-Door Price (in cents)",
+      type: "number",
+      description:
+        "Recorded for each at-door sale tapped on the check-in board. e.g. 1500 = $15.00. Leave blank to record $0.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      validation: (Rule) => Rule.integer().min(0),
+    }),
+    defineField({
       name: "cashPaymentEnabled",
       title: "Allow Cash at the Door",
       type: "boolean",
@@ -174,6 +186,18 @@ export default defineType({
         "Turn on to let door staff register a board member's free +1 guest directly from the check-in board.",
       hidden: ({ parent }) => !parent?.ticketingEnabled,
       initialValue: false,
+    }),
+    defineField({
+      name: "formerBoardExcludedKeys",
+      title: "Former Board — Free Entry",
+      type: "array",
+      description:
+        "Ticked former board members get in free and are added to the door list tagged \"Former Board\". Everyone is ticked by default — untick anyone who isn't comped for this event. Edit the list itself under Former Board Members.",
+      // Stores who is NOT free, so an event that's never been touched (and
+      // anyone added to the roster later) defaults to free.
+      of: [{ type: "string" }],
+      components: { input: FormerBoardFreeEntryInput },
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
     }),
     defineField({
       name: "checkinPassword",

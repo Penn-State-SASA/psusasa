@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { TicketRecord } from "@/lib/airtable";
 import type { BoardMemberPickerEntry } from "@/lib/types";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
+import { AT_DOOR_BATCH_MAX, isAtDoorTicket } from "@/lib/atDoor";
+import {
+  isFormerBoardTicket,
+  isFormerBoardVirtualId,
+  rosterKeyFromVirtualId,
+} from "@/lib/formerBoard";
+import { amountOwedCents, checkinUpdates, matchesSearch, psuIdOf } from "@/lib/checkin";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -11,15 +18,8 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-// A cash order's price isn't split per-ticket in Airtable (member/non-member
-// units can differ), so this is a proportional estimate of what's still
-// owed as a party partially checks in — not penny-exact, but good enough
-// for staff to know roughly what to ask for. Purely derived from check-in
-// progress: there's no separate "paid" toggle, checking someone in is the
-// only action, and un-checking them raises the owed amount right back up.
-function amountOwedCents(t: TicketRecord): number {
-  if (t.paymentMethod !== "Cash" || t.quantity <= 0) return 0;
-  return Math.round((t.amountPaidCents * (t.quantity - t.checkedInCount)) / t.quantity);
+function formatProgress(p: { checkedIn: number; expected: number }): string {
+  return `${p.checkedIn} / ${p.expected}`;
 }
 
 interface CheckinBoardProps {
@@ -28,6 +28,8 @@ interface CheckinBoardProps {
   initialTickets: TicketRecord[];
   boardPlusOneEnabled: boolean;
   boardMembers: BoardMemberPickerEntry[];
+  /** The event-wide capacity, or null when there's no limit. */
+  capacity: number | null;
 }
 
 export default function CheckinBoard({
@@ -36,12 +38,25 @@ export default function CheckinBoard({
   initialTickets,
   boardPlusOneEnabled,
   boardMembers,
+  capacity,
 }: CheckinBoardProps) {
   const [tickets, setTickets] = useState<TicketRecord[]>(initialTickets);
   const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCash, setConfirmCash] = useState<TicketRecord | null>(null);
+
+  // At-door taps not yet reflected in `tickets`: those still waiting to be
+  // sent, plus the batch whose request is out. Kept in refs for the sync
+  // loop, mirrored in state for rendering. Negative means undos.
+  const atDoorQueuedRef = useRef(0);
+  const atDoorInFlightRef = useRef(0);
+  const [atDoorOffset, setAtDoorOffset] = useState(0);
+  const atDoorSyncingRef = useRef(false);
+  // Bumped whenever an at-door sync starts or ends, so a poll that overlapped
+  // one can tell its list may predate the write and would roll it back.
+  const atDoorSyncGenRef = useRef(0);
 
   const [showAddPlusOne, setShowAddPlusOne] = useState(false);
   const [plusOneBoardMemberKey, setPlusOneBoardMemberKey] = useState("");
@@ -50,16 +65,26 @@ export default function CheckinBoard({
   const [plusOneSubmitting, setPlusOneSubmitting] = useState(false);
   const [plusOneError, setPlusOneError] = useState<string | null>(null);
 
-  async function refetch() {
+  async function fetchTickets(): Promise<TicketRecord[] | null> {
     try {
       const res = await fetch(`/api/checkin/${eventId}/tickets`, {
         cache: "no-store",
       });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const data = await res.json();
-      if (Array.isArray(data.tickets)) setTickets(data.tickets);
+      return Array.isArray(data.tickets) ? data.tickets : null;
     } catch {
-      // next poll will retry
+      return null; // next poll will retry
+    }
+  }
+
+  async function refetch() {
+    const gen = atDoorSyncGenRef.current;
+    const next = await fetchTickets();
+    // Skip a list that overlapped an at-door sync — the sync applies its
+    // own fresher one when it finishes.
+    if (next && !atDoorSyncingRef.current && gen === atDoorSyncGenRef.current) {
+      setTickets(next);
     }
   }
 
@@ -106,22 +131,89 @@ export default function CheckinBoard({
     }
   }
 
-  // Paid is fully derived from check-in progress on cash orders — no
-  // separate manual toggle. Written alongside checkedInCount on every
-  // change (either direction) purely so raw Airtable views/reports have a
-  // simple boolean to filter/sum by; the board itself only ever reads
-  // amountOwedCents, computed straight from the count.
-  function checkinUpdates(
-    ticket: TicketRecord,
-    nextCount: number
-  ): { checkedInCount: number; paid?: boolean } {
-    const updates: { checkedInCount: number; paid?: boolean } = {
-      checkedInCount: nextCount,
-    };
-    if (ticket.paymentMethod === "Cash") {
-      updates.paid = nextCount >= ticket.quantity;
+  // A former board member's placeholder row has no Airtable record yet —
+  // checking them in creates it (already checked in) via its own route.
+  async function checkInFormerBoard(ticket: TicketRecord) {
+    setPendingId(ticket.id);
+    setError(null);
+    setTickets((prev) =>
+      prev.map((t): TicketRecord => (t.id === ticket.id ? { ...t, checkedInCount: 1 } : t))
+    );
+    try {
+      const res = await fetch(`/api/checkin/${eventId}/former-board`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rosterKey: rosterKeyFromVirtualId(ticket.id) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to update.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update.");
+    } finally {
+      // Swap the placeholder for the real row (or roll back on failure).
+      await refetch();
+      setPendingId(null);
     }
-    return updates;
+  }
+
+  // At-door sales are nameless one-person rows, shown only as a counter:
+  // + records a new one, − deletes the most recent (from any device). A tap
+  // counts instantly and never locks the buttons; the sync loop sends taps
+  // in batches, so a party of five is one or two requests, not five.
+  function tapAtDoor(delta: 1 | -1) {
+    setError(null);
+    atDoorQueuedRef.current += delta;
+    setAtDoorOffset(atDoorQueuedRef.current + atDoorInFlightRef.current);
+    syncAtDoorSales();
+  }
+
+  async function syncAtDoorSales() {
+    if (atDoorSyncingRef.current) return; // the running loop picks up new taps
+    atDoorSyncingRef.current = true;
+    atDoorSyncGenRef.current++;
+    try {
+      while (atDoorQueuedRef.current !== 0) {
+        const queued = atDoorQueuedRef.current;
+        const batch = Math.sign(queued) * Math.min(Math.abs(queued), AT_DOOR_BATCH_MAX);
+        atDoorQueuedRef.current -= batch;
+        atDoorInFlightRef.current = batch;
+        try {
+          const res = await fetch(`/api/checkin/${eventId}/at-door`, {
+            method: batch > 0 ? "POST" : "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count: Math.abs(batch) }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error ?? "Failed to update at-door sales.");
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Failed to update at-door sales.");
+          // Drop the taps still waiting too — after e.g. a capacity refusal
+          // they'd only fail the same way.
+          atDoorQueuedRef.current = 0;
+        }
+        // Swap the batch's offset for the server's rows in one render, so
+        // the count never double-counts or dips back down.
+        const next = await fetchTickets();
+        if (next) setTickets(next);
+        atDoorInFlightRef.current = 0;
+        setAtDoorOffset(atDoorQueuedRef.current);
+      }
+    } finally {
+      atDoorSyncingRef.current = false;
+      atDoorSyncGenRef.current++;
+    }
+  }
+
+  // Once an order is fully in, the door moves on to the next guest: clear
+  // the box and keep the keyboard up. Must run synchronously inside the
+  // tap/keypress, or iOS won't reopen the keyboard on focus().
+  function resetSearch() {
+    setSearch("");
+    searchRef.current?.focus();
   }
 
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
@@ -129,6 +221,14 @@ export default function CheckinBoard({
   // through the collect-cash confirmation first, so staff always see the
   // amount before it counts as checked in.
   function handleTap(ticket: TicketRecord) {
+    if (isFormerBoardVirtualId(ticket.id)) {
+      // Only ever shown un-checked-in — once checked in it's a real row.
+      if (ticket.checkedInCount === 0) {
+        resetSearch();
+        checkInFormerBoard(ticket);
+      }
+      return;
+    }
     if (ticket.checkedInCount > 0) {
       sendMark(ticket.id, checkinUpdates(ticket, 0));
       return;
@@ -137,6 +237,7 @@ export default function CheckinBoard({
       setConfirmCash(ticket);
       return;
     }
+    resetSearch();
     sendMark(ticket.id, checkinUpdates(ticket, 1));
   }
 
@@ -149,7 +250,9 @@ export default function CheckinBoard({
       setConfirmCash(ticket);
       return;
     }
-    sendMark(ticket.id, checkinUpdates(ticket, ticket.checkedInCount + 1));
+    const next = ticket.checkedInCount + 1;
+    if (next >= ticket.quantity) resetSearch();
+    sendMark(ticket.id, checkinUpdates(ticket, next));
   }
 
   function decrementCheckedIn(ticket: TicketRecord) {
@@ -159,7 +262,9 @@ export default function CheckinBoard({
 
   function confirmCollectCash() {
     if (!confirmCash) return;
-    sendMark(confirmCash.id, checkinUpdates(confirmCash, confirmCash.checkedInCount + 1));
+    const next = confirmCash.checkedInCount + 1;
+    if (next >= confirmCash.quantity) resetSearch();
+    sendMark(confirmCash.id, checkinUpdates(confirmCash, next));
     setConfirmCash(null);
   }
 
@@ -215,38 +320,85 @@ export default function CheckinBoard({
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return tickets;
-    return tickets.filter((t) =>
-      `${t.firstName} ${t.lastName} ${t.contactEmail} ${t.psuEmail}`
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [tickets, search]);
+  const filtered = useMemo(
+    () => tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
+    [tickets, search]
+  );
 
+  // Everyone still to arrive first (partial parties included — they still
+  // have seats left), then alphabetical by last name.
   const sorted = useMemo(
     () =>
-      [...filtered].sort((a, b) =>
-        `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
-      ),
+      [...filtered].sort((a, b) => {
+        const aDone = a.checkedInCount >= a.quantity ? 1 : 0;
+        const bDone = b.checkedInCount >= b.quantity ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`);
+      }),
     [filtered]
   );
+
+  // Enter/Go checks in the only match, but never undoes a check-in and
+  // never guesses between several people.
+  const enterTarget =
+    search.trim() && sorted.length === 1 && sorted[0].checkedInCount < sorted[0].quantity
+      ? sorted[0]
+      : null;
+
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!enterTarget || pendingId === enterTarget.id) return;
+    if (enterTarget.quantity === 1) handleTap(enterTarget);
+    else incrementCheckedIn(enterTarget);
+  }
 
   const stats = useMemo(() => {
     let totalSold = 0;
     let totalCheckedIn = 0;
-    let memberSold = 0;
-    let nonMemberSold = 0;
+    let capacityUsed = 0;
     let cashOutstandingCents = 0;
+    let atDoorSales = 0;
+    const members = { checkedIn: 0, expected: 0 };
+    const nonMembers = { checkedIn: 0, expected: 0 };
+    const boardPlusOne = { checkedIn: 0, expected: 0 };
+    const formerBoard = { checkedIn: 0, expected: 0 };
     const byType = new Map<string, { sold: number; checkedIn: number }>();
 
     for (const t of tickets) {
-      totalSold += t.quantity;
+      // Checked In is the headcount through the door, comps included.
       totalCheckedIn += t.checkedInCount;
-      if (t.isMember) memberSold += t.quantity;
-      else nonMemberSold += t.quantity;
+      // Former board are comped guests, not sales — tallied on their own,
+      // and never count toward capacity.
+      if (isFormerBoardTicket(t)) {
+        formerBoard.expected += t.quantity;
+        formerBoard.checkedIn += t.checkedInCount;
+        continue;
+      }
+      totalSold += t.quantity;
+      // Same rule the server enforces (sumCapacityUsed): every paid row
+      // except former board, so unpaid cash orders don't hold a seat yet.
+      if (t.paid) capacityUsed += t.quantity;
+      if (isAtDoorTicket(t)) {
+        atDoorSales += t.quantity;
+        continue;
+      }
       cashOutstandingCents += amountOwedCents(t);
+
+      if (t.ticketTypeKey === BOARD_PLUS_ONE_TICKET_TYPE_KEY) {
+        boardPlusOne.expected += t.quantity;
+        boardPlusOne.checkedIn += t.checkedInCount;
+      } else if (t.isMember) {
+        // Only the buyer's own seat is member-priced; the rest of their
+        // party are non-members. The buyer counts as the first one in.
+        members.expected += 1;
+        members.checkedIn += Math.min(t.checkedInCount, 1);
+        nonMembers.expected += t.quantity - 1;
+        nonMembers.checkedIn += Math.max(0, t.checkedInCount - 1);
+      } else {
+        nonMembers.expected += t.quantity;
+        nonMembers.checkedIn += t.checkedInCount;
+      }
 
       const entry = byType.get(t.ticketTypeName) ?? { sold: 0, checkedIn: 0 };
       entry.sold += t.quantity;
@@ -257,12 +409,22 @@ export default function CheckinBoard({
     return {
       totalSold,
       totalCheckedIn,
-      memberSold,
-      nonMemberSold,
+      capacityUsed,
       cashOutstandingCents,
+      atDoorSales,
+      members,
+      nonMembers,
+      boardPlusOne,
+      formerBoard,
       byType: Array.from(byType.entries()),
     };
   }, [tickets]);
+
+  // At-door rows are paid and checked in, so taps not yet synced count
+  // everywhere the rows themselves would.
+  const atDoorSales = stats.atDoorSales + atDoorOffset;
+  const capacityUsed = stats.capacityUsed + atDoorOffset;
+  const atCapacity = capacity !== null && capacityUsed >= capacity;
 
   return (
     <div>
@@ -270,16 +432,61 @@ export default function CheckinBoard({
         <h1 className="font-heading text-lg font-semibold text-sasa-red-900">
           {eventTitle}
         </h1>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
-          <Stat label="Tickets Sold" value={String(stats.totalSold)} />
-          <Stat label="Checked In" value={String(stats.totalCheckedIn)} />
-          <Stat label="Members" value={String(stats.memberSold)} />
-          <Stat label="Non-Members" value={String(stats.nonMemberSold)} />
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <Stat label="Tickets Sold" value={String(stats.totalSold + atDoorOffset)} />
+          <Stat label="Checked In" value={String(stats.totalCheckedIn + atDoorOffset)} />
+          {capacity !== null && (
+            <Stat
+              label="Capacity"
+              value={`${capacityUsed} / ${capacity}`}
+              warn={atCapacity}
+            />
+          )}
           <Stat
             label="Cash Outstanding"
             value={formatPrice(stats.cashOutstandingCents)}
             warn={stats.cashOutstandingCents > 0}
           />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm sm:grid-cols-4">
+          <Stat label="Members" value={formatProgress(stats.members)} />
+          <Stat label="Non-Members" value={formatProgress(stats.nonMembers)} />
+          {(boardPlusOneEnabled || stats.boardPlusOne.expected > 0) && (
+            <Stat label="Board +1" value={formatProgress(stats.boardPlusOne)} />
+          )}
+          {stats.formerBoard.expected > 0 && (
+            <Stat label="Former Board" value={formatProgress(stats.formerBoard)} />
+          )}
+        </div>
+        <div className="mt-3 border-t border-gray-100 pt-3 text-sm">
+          <p className="text-xs uppercase tracking-wide text-sasa-neutral-400">At-Door Sales</p>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              onClick={() => tapAtDoor(-1)}
+              disabled={atDoorSales <= 0}
+              aria-label="Undo at-door sale"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span
+              data-testid="at-door-count"
+              className="min-w-[2.5rem] text-center text-lg font-semibold text-sasa-red-900"
+            >
+              {atDoorSales}
+            </span>
+            <button
+              onClick={() => tapAtDoor(1)}
+              disabled={atCapacity}
+              aria-label="Add at-door sale"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-lg font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              +
+            </button>
+            {atCapacity && (
+              <span className="text-xs font-medium text-amber-600">At capacity</span>
+            )}
+          </div>
         </div>
         {stats.byType.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sasa-neutral-500">
@@ -294,10 +501,18 @@ export default function CheckinBoard({
 
       <div className="mb-4 flex gap-2">
         <input
-          type="text"
+          ref={searchRef}
+          type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or email..."
+          onKeyDown={handleSearchKeyDown}
+          placeholder="Search by name, email, or PSU ID..."
+          autoFocus
+          enterKeyHint="go"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
           className="w-full rounded border border-gray-300 px-4 py-3 text-base focus:border-sasa-red-900 focus:outline-none focus:ring-1 focus:ring-sasa-red-900"
         />
         {boardPlusOneEnabled && boardMembers.length > 0 && (
@@ -309,6 +524,12 @@ export default function CheckinBoard({
           </button>
         )}
       </div>
+
+      {enterTarget && (
+        <p className="-mt-2 mb-4 text-xs text-sasa-neutral-500">
+          Press Enter / Go to check in {enterTarget.firstName} {enterTarget.lastName}
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -328,6 +549,8 @@ export default function CheckinBoard({
           const isSingle = t.quantity === 1;
           const fullyCheckedIn = t.checkedInCount >= t.quantity;
           const partiallyCheckedIn = t.checkedInCount > 0 && !fullyCheckedIn;
+          const formerBoard = isFormerBoardTicket(t);
+          const psuId = psuIdOf(t);
 
           return (
             <div
@@ -362,16 +585,20 @@ export default function CheckinBoard({
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      t.isMember
-                        ? "bg-sasa-forest/10 text-sasa-forest"
-                        : "bg-gray-100 text-sasa-neutral-500"
+                      formerBoard
+                        ? "bg-sasa-gold-400/20 text-sasa-red-900"
+                        : t.isMember
+                          ? "bg-sasa-forest/10 text-sasa-forest"
+                          : "bg-gray-100 text-sasa-neutral-500"
                     }`}
                   >
-                    {t.isMember
-                      ? t.memberYear
-                        ? `Member · ${t.memberYear}`
-                        : "Member"
-                      : "Non-Member"}
+                    {formerBoard
+                      ? "Former Board"
+                      : t.isMember
+                        ? t.memberYear
+                          ? `Member · ${t.memberYear}`
+                          : "Member"
+                        : "Non-Member"}
                   </span>
                   {owedCents > 0 && (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
@@ -380,8 +607,9 @@ export default function CheckinBoard({
                   )}
                 </div>
                 <div className="mt-0.5 text-xs text-sasa-neutral-500">
-                  {t.quantity}x {t.ticketTypeName}
+                  {formerBoard ? "Free entry" : `${t.quantity}x ${t.ticketTypeName}`}
                   {t.contactEmail ? ` · ${t.contactEmail}` : ""}
+                  {psuId ? ` · ${psuId}` : ""}
                 </div>
               </div>
 

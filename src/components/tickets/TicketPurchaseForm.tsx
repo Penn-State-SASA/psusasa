@@ -34,13 +34,14 @@ export interface TicketTypeOption {
   memberPriceCents: number;
   nonMemberPriceCents: number;
   salesOpen: boolean;
-  remaining: number | null;
 }
 
 interface TicketPurchaseFormProps {
   eventId: string;
   eventSlug: string;
   ticketTypes: TicketTypeOption[];
+  /** Seats left under the event-wide capacity — null when there's no limit. */
+  remaining: number | null;
   cashPaymentEnabled: boolean;
 }
 
@@ -52,15 +53,17 @@ export default function TicketPurchaseForm({
   eventId,
   eventSlug,
   ticketTypes,
+  remaining,
   cashPaymentEnabled,
 }: TicketPurchaseFormProps) {
   const purchasable = useMemo(
-    () =>
-      ticketTypes.filter(
-        (t) => t.salesOpen && (t.remaining === null || t.remaining > 0)
-      ),
+    () => ticketTypes.filter((t) => t.salesOpen),
     [ticketTypes]
   );
+  // Capacity is event-wide, so a full event sells out every type at once.
+  // The types stay listed (marked sold out) rather than hiding the form,
+  // and the seat count itself is never shown to buyers.
+  const soldOut = remaining !== null && remaining <= 0;
 
   const [step, setStep] = useState<Step>(1);
   const [firstName, setFirstName] = useState("");
@@ -72,7 +75,9 @@ export default function TicketPurchaseForm({
     alreadyUsed: boolean;
   } | null>(null);
   const [checkingMemberPricing, setCheckingMemberPricing] = useState(false);
-  const [ticketTypeKey, setTicketTypeKey] = useState(purchasable[0]?._key ?? "");
+  const [ticketTypeKey, setTicketTypeKey] = useState(
+    soldOut ? "" : (purchasable[0]?._key ?? "")
+  );
   const [additionalQuantity, setAdditionalQuantity] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   // Which fields have earned the right to show their error yet. The errors
@@ -104,12 +109,10 @@ export default function TicketPurchaseForm({
   } | null>(null);
 
   const selectedType = purchasable.find((t) => t._key === ticketTypeKey);
-  const maxQuantity = selectedType
-    ? Math.max(
-        1,
-        Math.min(MAX_TICKETS_PER_ORDER, selectedType.remaining ?? MAX_TICKETS_PER_ORDER)
-      )
-    : MAX_TICKETS_PER_ORDER;
+  const maxQuantity = Math.max(
+    1,
+    Math.min(MAX_TICKETS_PER_ORDER, remaining ?? MAX_TICKETS_PER_ORDER)
+  );
   // Your own ticket always reserves 1 of the available spots.
   const maxAdditionalQuantity = Math.max(0, maxQuantity - 1);
 
@@ -529,10 +532,12 @@ export default function TicketPurchaseForm({
                     return (
                       <label
                         key={t._key}
-                        className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-all ${
-                          selected
-                            ? "border-sasa-red-900 bg-sasa-red-900/5 shadow-sm"
-                            : "border-gray-200 hover:border-sasa-red-900/30 hover:bg-gray-50"
+                        className={`flex items-center gap-3 rounded-lg border-2 p-3 transition-all ${
+                          soldOut
+                            ? "cursor-not-allowed border-gray-200 opacity-60"
+                            : selected
+                              ? "cursor-pointer border-sasa-red-900 bg-sasa-red-900/5 shadow-sm"
+                              : "cursor-pointer border-gray-200 hover:border-sasa-red-900/30 hover:bg-gray-50"
                         }`}
                       >
                         <input
@@ -540,6 +545,7 @@ export default function TicketPurchaseForm({
                           name="ticketType"
                           value={t._key}
                           checked={selected}
+                          disabled={soldOut}
                           onChange={() => setTicketTypeKey(t._key)}
                           className="sr-only"
                         />
@@ -555,9 +561,9 @@ export default function TicketPurchaseForm({
                             <span className="font-heading text-sm font-semibold text-sasa-red-900">
                               {t.name}
                             </span>
-                            {typeof t.remaining === "number" && t.remaining <= 10 && (
-                              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                                {t.remaining} left
+                            {soldOut && (
+                              <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-sasa-neutral-500">
+                                Sold out
                               </span>
                             )}
                           </span>
@@ -813,7 +819,7 @@ export default function TicketPurchaseForm({
           <div className="flex justify-end">
             <button
               onClick={goToStep2}
-              disabled={submitting || !isStep1Valid}
+              disabled={submitting || soldOut || !isStep1Valid}
               className="rounded-lg bg-sasa-red-900 px-8 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sasa-red-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-sasa-red-900"
             >
               {submitting ? "Please wait..." : "Continue →"}

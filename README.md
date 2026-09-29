@@ -80,6 +80,71 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) for the website and [http://localhost:3000/studio](http://localhost:3000/studio) for the Sanity CMS.
 
+### 4. Checks
+
+```bash
+npm run lint           # next lint
+npm run typecheck      # tsc --noEmit
+npm test               # vitest: unit, integration, and component tests (~3s, no network)
+npm run test:watch     # the same, re-running on save
+npm run test:coverage  # the same, plus a coverage report in coverage/index.html
+npm run test:e2e       # Playwright smoke tests in a real browser
+```
+
+Every pull request runs two jobs from [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+**check** (lint, typecheck, and `test:coverage`) and **e2e** (`next build`, then the
+Playwright suite). A failed E2E run uploads a Playwright report with traces as a build artifact.
+
+#### What's tested where
+
+| Layer | Lives in | What it covers |
+|---|---|---|
+| Unit | `src/**/*.test.ts` next to the code | Pure helpers: fees, email rules, check-in money math, form helpers, session signing, the check-in middleware |
+| Integration | `route.test.ts` / `page.test.tsx` next to each API route and return page | Each route's real code path, with Stripe, Airtable, Sanity, Resend, and GroupMe mocked |
+| Component | `src/components/checkin/CheckinBoard.test.tsx` | The door check-in board, in a simulated browser (jsdom) |
+| E2E smoke | `e2e/*.spec.ts` | The built site in Chromium, desktop and phone-sized: pages load, 404, check-in gating, API input checks |
+
+Several tests exist because the bug they describe actually shipped once: untagged Stripe
+payments being filed as memberships, a member's single ticket shown as "non-member", and
+Resend failures that reported success. A comment in each of those tests names the bug.
+
+**Mocking rule for integration tests:** mock whole service modules (`@/lib/airtable`, the
+Sanity client, `@/lib/ticketEmail`, …) and let everything else run for real. Stripe is only
+partly mocked (see [`src/test/stripeMock.ts`](src/test/stripeMock.ts)): PaymentIntent calls
+are fakes, but webhook signature checks are real. Shared factories and request helpers are
+in [`src/test/`](src/test/).
+
+**Coverage floors:** `vitest.config.ts` sets minimum coverage for `src/lib`, `src/app/api`,
+the middleware, and the check-in board. CI fails if a change drops below them. Raise them
+as coverage improves, and don't lower them to get a PR through.
+
+#### Running the E2E tests locally
+
+```bash
+npx playwright install chromium   # once
+npm run test:e2e                  # starts `npm run dev` for you, or reuses one on :3000
+```
+
+The suite is **read-only by design**: every request in it is rejected before the app would
+write to Airtable or create a charge, so it's safe even with the real keys in `.env.local`.
+Keep it that way when adding tests. The check-in tests need `CHECKIN_SESSION_SECRET` set in
+`.env.local`. To run against a server that's already up somewhere, set
+`PLAYWRIGHT_BASE_URL`.
+
+#### What's still manual
+
+The real round-trip through Stripe, Airtable, Resend, and GroupMe (a card actually charged, a
+row actually written, an email actually delivered) isn't automated. After changing payment or
+check-in code, still test it by hand in Stripe test mode.
+
+#### GitHub settings (one-time, done in the GitHub UI)
+
+- **Settings → Branches:** protect `main` and require the `check` and `e2e` status checks, so
+  a red build can't be merged.
+- **Settings → Code security:** turn on Dependabot security updates. Routine dependency
+  updates arrive monthly, grouped, via [`.github/dependabot.yml`](.github/dependabot.yml).
+  Merge them once CI is green.
+
 ## Project Structure
 
 ```
@@ -131,8 +196,12 @@ src/
     airtable.ts    # Members + Tickets tables (Airtable REST API)
     ticketing.ts   # Shared ticket-order validation/pricing (used by both purchase routes)
     checkinAuth.ts # Door tool session signing (Web Crypto — Edge + Node compatible)
+    checkin.ts     # Door tool money math: amount still owed, when a cash order is paid
+    membershipForm.ts # Membership form helpers ("Other" answers, phone formatting)
     groupme.ts     # Auto-add member to GroupMe (+ admin email fallback)
+  test/            # Shared test helpers: factories, request builders, Stripe mock
 middleware.ts # Gates /checkin/[eventId] + /api/checkin/[eventId]/* per-event
+e2e/          # Playwright smoke tests (read-only)
 sanity/
   lib/
     client.ts   # Sanity client
@@ -189,11 +258,12 @@ Replaces Doorlist. Current SASA members automatically get a cheaper (or free) pr
 **Setting up ticket sales for an event:**
 
 1. Open the event in **Studio > Event** and toggle **Ticketing Enabled**
-2. Under **Ticket Types**, add one entry per tier (e.g. "General Admission", "VIP"), each with its own **Member Price** and **Non-Member Price** (in cents), an optional **Capacity**, and **Sales Open**
-3. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
-4. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
+2. Under **Ticket Types**, add one entry per tier (e.g. "General Admission", "VIP"), each with its own **Member Price** and **Non-Member Price** (in cents) and **Sales Open**
+3. Optionally set an **Event Capacity** (the max people for the whole event, across all ticket types — blank means unlimited) and an **At-Door Price** (in cents, recorded on each at-door sale — blank means $0)
+4. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
+5. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
 
-Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which reserves their spot and shows as due on the check-in board.
+Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which puts them on the door list and shows as due on the check-in board. Event Capacity counts paid tickets of every type, at-door sales, and board +1 guests. Unpaid cash orders don't count (entry isn't guaranteed) until the door marks them paid, and former board members never count. Once the event is full, every ticket type shows as **Sold out** online and the door can't add more at-door sales (board +1s are still allowed).
 
 **Running the door on event night:**
 
@@ -201,6 +271,15 @@ Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," 
 2. Search by name or email, tap an order to check it in — tap again to undo
 3. Cash orders show a "Cash due" badge; tapping one prompts you to confirm you collected the cash before it checks them in
 4. Multiple staff/devices can work the same board at once — check-ins sync across devices every ~3 seconds
+5. Former board members who are comped for the event are already on the list, tagged **Former Board** — tap to check them in like anyone else. They don't count toward Tickets Sold or capacity; the header shows them separately
+6. For someone paying at the door, tap **+** under **At-Door Sales** — it adds one person to Checked In and to capacity, recorded in Airtable at the event's At-Door Price with payment method "At Door". Tap **−** to undo the most recent one (it deletes that row). At-door sales only show as this counter, not in the guest list, and **+** is disabled once the event is at capacity
+7. The header shows checked-in / expected for **Members**, **Non-Members**, **Board +1**, and **Former Board**, plus **Capacity** (used / capacity) when the event has one. On a member's multi-ticket order, only the buyer's own seat counts as a member — the rest of their party are non-members — and the first one checked in on that order counts as the member
+
+**Former board free entry:**
+
+- The list of former board members lives in **Studio > Former Board Members** (first name + last name). Add or remove people there; changes apply to every ticketed event
+- Everyone on that list gets in free at every ticketed event by default. To leave someone out for one event, open the event and untick them under **Former Board — Free Entry**, then **Publish**
+- Nothing is written to Airtable until the door checks a former board member in — at that point a $0, paid row with ticket type "Former Board" is created for them
 
 ### Updating Officers / E-Board
 

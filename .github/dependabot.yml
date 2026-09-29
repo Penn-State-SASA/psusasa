@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    # Monthly and grouped so a volunteer board gets a few PRs, not dozens.
+    # Security fixes don't wait for this schedule — they come through
+    # Dependabot security updates (enabled in the repo's settings).
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      next:
+        patterns: ["next", "eslint-config-next"]
+      sanity:
+        patterns: ["sanity", "next-sanity", "@sanity/*", "@portabletext/*"]
+      stripe:
+        patterns: ["stripe", "@stripe/*"]
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@playwright/test"
+          - "@testing-library/*"
+          - "jsdom"
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Major versions of these are migrations (App Router changes, React 19,
+      # ESLint flat config), not routine bumps. Do them deliberately.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

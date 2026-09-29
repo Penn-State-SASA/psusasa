@@ -4,7 +4,7 @@ import type { SanityEvent, TicketType } from "@/lib/types";
 import {
   hasUsedMemberPricing,
   lookupCurrentMember,
-  sumSoldTicketQuantity,
+  sumCapacityUsed,
 } from "@/lib/airtable";
 
 export const MAX_TICKETS_PER_ORDER = 10;
@@ -97,14 +97,14 @@ export async function resolveTicketOrder({
     memberUnits * ticketType.memberPriceCents +
     nonMemberUnits * ticketType.nonMemberPriceCents;
 
-  if (typeof ticketType.capacity === "number") {
-    const sold = await sumSoldTicketQuantity(event._id, ticketType._key);
-    const remaining = ticketType.capacity - sold;
+  if (typeof event.capacity === "number") {
+    const used = await sumCapacityUsed(event._id);
+    const remaining = event.capacity - used;
     if (qty > remaining) {
       throw new TicketOrderError(
         remaining > 0
-          ? `Only ${remaining} ticket(s) left for ${ticketType.name}.`
-          : `${ticketType.name} is sold out.`
+          ? `Only ${remaining} ticket(s) left.`
+          : "This event is sold out."
       );
     }
   }

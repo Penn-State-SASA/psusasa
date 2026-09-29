@@ -20,7 +20,8 @@ export const allEventsQuery = `*[_type == "event"] | order(date desc) {
 
 export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0] {
   _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
-  ticketingEnabled, cashPaymentEnabled, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, capacity, salesOpen },
+  ticketingEnabled, cashPaymentEnabled, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, salesOpen },
+  capacity, atDoorPriceCents,
   "category": category->{ _id, name, color }
 }`;
 
@@ -29,7 +30,8 @@ export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0]
 // Deliberately excludes checkinPassword; this query's results can reach the browser.
 export const eventByIdQuery = `*[_type == "event" && _id == $id][0] {
   _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
-  ticketingEnabled, cashPaymentEnabled, boardPlusOneEnabled, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, capacity, salesOpen },
+  ticketingEnabled, cashPaymentEnabled, boardPlusOneEnabled, formerBoardExcludedKeys, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, salesOpen },
+  capacity, atDoorPriceCents,
   "category": category->{ _id, name, color }
 }`;
 
@@ -54,6 +56,12 @@ export const boardMembersPickerQuery = `*[_id == "boardMembers"][0] {
 // so psuEmail never ends up in a client-facing response.
 export const boardMembersAuthQuery = `*[_id == "boardMembers"][0] {
   members[]{ _key, firstName, lastName, psuEmail }
+}`;
+
+// Client-safe: names only. Merged into every ticketed event's door list as
+// comped "Former Board" guests (minus anyone the event unticks).
+export const formerBoardRosterQuery = `*[_id == "formerBoardMembers"][0] {
+  members[]{ _key, firstName, lastName }
 }`;
 
 export const categoriesQuery = `*[_type == "eventCategory"] | order(name asc) {

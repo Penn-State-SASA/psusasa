@@ -1,3 +1,6 @@
+import { AT_DOOR_TICKET_TYPE_KEY, AT_DOOR_TICKET_TYPE_NAME } from "@/lib/atDoor";
+import { FORMER_BOARD_TICKET_TYPE_KEY } from "@/lib/formerBoard";
+
 function escapeForAirtableFormula(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -272,6 +275,68 @@ export async function appendTicketToAirtable(
   return { inserted: true };
 }
 
+export interface FormerBoardCheckin {
+  eventId: string;
+  eventName: string;
+  rosterKey: string;
+  firstName: string;
+  lastName: string;
+  ticketTypeKey: string;
+  ticketTypeName: string;
+}
+
+// Creates a former board member's comped row, already checked in, the
+// first time the door checks them in. Several door devices can tap the same
+// person within moments of each other, so this is an atomic upsert rather
+// than look-up-then-insert. The Tickets table has no dedicated external-id
+// column, so the merge key rides in "Stripe Payment Intent ID" — the one
+// column upserts already match on. The "former-board:" prefix keeps it
+// clearly apart from real Stripe ids ("pi_…"), and it's scoped to the event
+// so the same person gets one row per event.
+export async function upsertFormerBoardCheckin(
+  guest: FormerBoardCheckin
+): Promise<void> {
+  const now = new Date().toISOString();
+  const fields = {
+    Timestamp: now,
+    "First Name": guest.firstName,
+    "Last Name": guest.lastName,
+    "Contact Email": "",
+    "PSU Email": "",
+    "Is Member": false,
+    "Member Year": "",
+    "Event ID": guest.eventId,
+    "Event Name": guest.eventName,
+    "Ticket Type Key": guest.ticketTypeKey,
+    "Ticket Type Name": guest.ticketTypeName,
+    Quantity: 1,
+    "Amount Paid": 0,
+    "Payment Method": "Card",
+    Paid: true,
+    "Stripe Payment Intent ID": `former-board:${guest.eventId}:${guest.rosterKey}`,
+    "Checked In Count": 1,
+    "Checked In At": now,
+    "Board Member": "",
+  };
+
+  const res = await fetch(ticketsBaseUrl(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      performUpsert: { fieldsToMergeOn: ["Stripe Payment Intent ID"] },
+      records: [{ fields }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+}
+
 async function sumTicketQuantity(formula: string): Promise<number> {
   const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
   return records.reduce((sum, r) => {
@@ -280,14 +345,92 @@ async function sumTicketQuantity(formula: string): Promise<number> {
   }, 0);
 }
 
-// Counts every order for this ticket type regardless of Paid status — an
-// unpaid cash order still reserves a capacity slot the moment it's placed.
-export async function sumSoldTicketQuantity(
-  eventId: string,
-  ticketTypeKey: string
-): Promise<number> {
-  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${escapeForAirtableFormula(ticketTypeKey)}')`;
+// How many of the event's capacity slots are taken, across every ticket
+// type. Counts only paid rows (card, free, board plus-one, at-door sales, or
+// cash collected at the door) — an unpaid cash order is unguaranteed and
+// doesn't hold a slot until the door marks it paid. Former board guests are
+// comped extras and never count.
+export async function sumCapacityUsed(eventId: string): Promise<number> {
+  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Paid} = TRUE(), {Ticket Type Key} != '${FORMER_BOARD_TICKET_TYPE_KEY}')`;
   return sumTicketQuantity(formula);
+}
+
+export interface AtDoorSale {
+  eventId: string;
+  eventName: string;
+  amountCents: number;
+}
+
+// Walk-up sales tapped in on the check-in board: nameless rows that are
+// already paid and checked in. Each sale is its own row (rather than a
+// counter on one row) so several door devices can add sales at once
+// without overwriting each other. Several quick taps arrive as one batch
+// of up to AT_DOOR_BATCH_MAX rows, written in a single request.
+export async function appendAtDoorSales(sale: AtDoorSale, count: number): Promise<void> {
+  const now = new Date().toISOString();
+  const fields = {
+    Timestamp: now,
+    "First Name": AT_DOOR_TICKET_TYPE_NAME,
+    "Last Name": "",
+    "Contact Email": "",
+    "PSU Email": "",
+    "Is Member": false,
+    "Member Year": "",
+    "Event ID": sale.eventId,
+    "Event Name": sale.eventName,
+    "Ticket Type Key": AT_DOOR_TICKET_TYPE_KEY,
+    "Ticket Type Name": AT_DOOR_TICKET_TYPE_NAME,
+    Quantity: 1,
+    "Amount Paid": sale.amountCents / 100,
+    "Payment Method": "At Door",
+    Paid: true,
+    "Stripe Payment Intent ID": "",
+    "Checked In Count": 1,
+    "Checked In At": now,
+    "Board Member": "",
+  };
+
+  const res = await fetch(ticketsBaseUrl(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ records: Array.from({ length: count }, () => ({ fields })) }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+}
+
+// Undo for mis-tapped at-door sales: deletes the event's `count` most
+// recent ones (up to AT_DOOR_BATCH_MAX) in a single request. Returns how
+// many were deleted — fewer than asked, or 0, when there weren't enough.
+export async function deleteLatestAtDoorSales(eventId: string, count: number): Promise<number> {
+  const formula = `AND({Event ID} = '${escapeForAirtableFormula(eventId)}', {Ticket Type Key} = '${AT_DOOR_TICKET_TYPE_KEY}')`;
+  const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
+  if (records.length === 0) return 0;
+
+  const latest = [...records]
+    .sort((a, b) =>
+      String(b.fields["Timestamp"] ?? "").localeCompare(String(a.fields["Timestamp"] ?? ""))
+    )
+    .slice(0, count);
+
+  const url = new URL(ticketsBaseUrl());
+  for (const r of latest) url.searchParams.append("records[]", r.id);
+  const res = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable error: ${res.status} ${body}`);
+  }
+  return latest.length;
 }
 
 // A person gets member pricing on at most 1 ticket per event, ever —
@@ -319,7 +462,7 @@ export interface TicketRecord {
   ticketTypeName: string;
   quantity: number;
   amountPaidCents: number;
-  paymentMethod: "Card" | "Cash";
+  paymentMethod: "Card" | "Cash" | "At Door";
   paid: boolean;
   /** How many of this order's `quantity` seats have been checked in — 0 to quantity. */
   checkedInCount: number;
@@ -335,8 +478,12 @@ export async function listTicketsForEvent(
 
   return records.map((r): TicketRecord => {
     const f = r.fields;
-    const paymentMethod: "Card" | "Cash" =
-      f["Payment Method"] === "Cash" ? "Cash" : "Card";
+    const paymentMethod: TicketRecord["paymentMethod"] =
+      f["Payment Method"] === "Cash"
+        ? "Cash"
+        : f["Payment Method"] === "At Door"
+          ? "At Door"
+          : "Card";
     return {
       id: r.id,
       firstName: String(f["First Name"] ?? ""),
@@ -410,79 +557,6 @@ export async function updateTicketCheckinState(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Airtable update error: ${res.status} ${body}`);
-  }
-}
-
-/** A row still owed its confirmation email. Deliberately not TicketRecord —
- *  that type serves the check-in board and carries no "Event Name", which the
- *  email body needs. */
-export interface PendingConfirmation {
-  id: string;
-  firstName: string;
-  contactEmail: string;
-  eventName: string;
-  ticketTypeName: string;
-  quantity: number;
-  amountPaidCents: number;
-}
-
-// Rows that should have received a confirmation email but haven't. The
-// selection lives in the formula so the caller's "remaining" count is
-// meaningful and converges to zero rather than re-listing rows it will
-// always skip:
-//   - Contact Email != ''  excludes board +1 guest rows, which are created
-//     with no email and never had one.
-//   - Paid  excludes cash orders still owing money at the door — those are
-//     correctly unemailed by design, and "Amount paid" would be a lie. Card,
-//     $0, and already-collected cash orders all write Paid = true.
-// Returns every outstanding row, not a page — the caller slices to its
-// per-run limit, so it can report an accurate "remaining" alongside what it
-// actually attempted.
-export async function listTicketsAwaitingConfirmation(): Promise<
-  PendingConfirmation[]
-> {
-  const formula = `AND(NOT({Confirmation Sent}), {Contact Email} != '', {Paid})`;
-  const records = await fetchAllAirtableRecords(ticketsBaseUrl(), formula);
-
-  return records.map((r): PendingConfirmation => {
-    const f = r.fields;
-    return {
-      id: r.id,
-      firstName: String(f["First Name"] ?? ""),
-      contactEmail: String(f["Contact Email"] ?? ""),
-      eventName: String(f["Event Name"] ?? ""),
-      ticketTypeName: String(f["Ticket Type Name"] ?? ""),
-      quantity: Number(f["Quantity"]) || 0,
-      amountPaidCents: Math.round((Number(f["Amount Paid"]) || 0) * 100),
-    };
-  });
-}
-
-// Marks rows as emailed. Airtable caps batch writes at 10 records per
-// request, so this chunks — callers flush as they go rather than once at the
-// end, so a timeout mid-run loses at most one chunk's worth of marks and the
-// next run re-sends only those.
-export async function markConfirmationSent(recordIds: string[]): Promise<void> {
-  for (let i = 0; i < recordIds.length; i += 10) {
-    const chunk = recordIds.slice(i, i + 10);
-    const res = await fetch(ticketsBaseUrl(), {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        records: chunk.map((id) => ({
-          id,
-          fields: { "Confirmation Sent": true },
-        })),
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Airtable mark-sent error: ${res.status} ${body}`);
-    }
   }
 }
 
