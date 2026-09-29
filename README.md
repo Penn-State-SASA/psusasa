@@ -47,7 +47,8 @@ GROUPME_ACCESS_TOKEN=...
 GROUPME_GROUP_ID=...
 
 # Resend (ticket confirmation emails to buyers, membership welcome emails to
-# new members, plus an admin notification when GroupMe auto-add falls through)
+# new members, plus an admin notification when GroupMe auto-add falls through
+# or a welcome email can't be sent)
 RESEND_API_KEY=re_...
 ADMIN_NOTIFICATION_EMAIL=exec.psusasa@gmail.com
 
