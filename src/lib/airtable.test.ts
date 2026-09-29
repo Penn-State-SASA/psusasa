@@ -491,6 +491,18 @@ describe("appendMemberToAirtable", () => {
     });
   });
 
+  it("reports an insert when the upsert created a new row", async () => {
+    fetchMock.mockResolvedValue(json({ createdRecords: ["rec1"], records: [] }));
+    expect(await appendMemberToAirtable(metadata, "pi_123")).toEqual({ inserted: true });
+  });
+
+  it("reports no insert when the upsert merged into an existing row", async () => {
+    // The webhook and the /join/return page both write every signup; only
+    // whichever call actually inserts is allowed to send the welcome email.
+    fetchMock.mockResolvedValue(json({ createdRecords: [], updatedRecords: ["rec1"] }));
+    expect(await appendMemberToAirtable(metadata, "pi_123")).toEqual({ inserted: false });
+  });
+
   it("leaves Amount Paid empty rather than writing NaN", async () => {
     fetchMock.mockResolvedValue(json({ records: [] }));
     await appendMemberToAirtable({ ...metadata, amountPaidCents: "n/a" }, "pi_123");

@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import JoinReturnPage from "./page";
 import { appendMemberToAirtable } from "@/lib/airtable";
+import { sendMembershipConfirmationEmail } from "@/lib/membershipEmail";
 import { sanityFetchSingle } from "../../../../../sanity/lib/client";
 import { paymentIntentsRetrieve } from "@/test/stripeMock";
 import { muteConsole } from "@/test/console";
 
 vi.mock("stripe", async () => (await import("@/test/stripeMock")).stripeWithSpiedPaymentIntents());
 vi.mock("@/lib/airtable", () => ({ appendMemberToAirtable: vi.fn() }));
+vi.mock("@/lib/membershipEmail", () => ({ sendMembershipConfirmationEmail: vi.fn() }));
 vi.mock("../../../../../sanity/lib/client", () => ({
   sanityFetchSingle: vi.fn(),
   sanityFetch: vi.fn(),
@@ -39,6 +41,7 @@ beforeEach(() => {
   // No CMS copy: the page renders its built-in fallbacks.
   vi.mocked(sanityFetchSingle).mockResolvedValue(null);
   paymentIntentsRetrieve.mockResolvedValue(paymentIntent());
+  vi.mocked(appendMemberToAirtable).mockResolvedValue({ inserted: true });
   muteConsole();
 });
 
@@ -50,7 +53,20 @@ describe("join return page", () => {
   it("records a paid membership and welcomes the new member", async () => {
     const html = await visit();
     expect(appendMemberToAirtable).toHaveBeenCalledWith(membershipMetadata, "pi_123");
+    expect(sendMembershipConfirmationEmail).toHaveBeenCalledWith({
+      psuEmail: "abc123@psu.edu",
+      firstName: "Asha",
+      amountPaidCents: 3635,
+    });
     expect(html).toContain("officially a SASA member");
+  });
+
+  it("doesn't email again when the webhook already recorded the signup", async () => {
+    // The webhook and this page race to write the same signup. Only the one
+    // whose upsert actually inserts sends the welcome email.
+    vi.mocked(appendMemberToAirtable).mockResolvedValue({ inserted: false });
+    expect(await visit()).toContain("officially a SASA member");
+    expect(sendMembershipConfirmationEmail).not.toHaveBeenCalled();
   });
 
   it("shows what Stripe actually charged", async () => {
@@ -89,5 +105,6 @@ describe("join return page", () => {
   it("still welcomes the member when the Airtable write fails", async () => {
     vi.mocked(appendMemberToAirtable).mockRejectedValue(new Error("Airtable error: 503"));
     expect(await visit()).toContain("officially a SASA member");
+    expect(sendMembershipConfirmationEmail).not.toHaveBeenCalled();
   });
 });

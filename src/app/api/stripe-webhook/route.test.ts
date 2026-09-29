@@ -5,6 +5,7 @@ import { POST } from "./route";
 import { appendMemberToAirtable, appendTicketToAirtable } from "@/lib/airtable";
 import { addMemberToGroupMe } from "@/lib/groupme";
 import { sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import { sendMembershipConfirmationEmail } from "@/lib/membershipEmail";
 import { sendAdminAlert } from "@/lib/adminAlert";
 import { muteConsole } from "@/test/console";
 
@@ -16,6 +17,7 @@ vi.mock("@/lib/airtable", () => ({
 }));
 vi.mock("@/lib/groupme", () => ({ addMemberToGroupMe: vi.fn() }));
 vi.mock("@/lib/ticketEmail", () => ({ sendTicketConfirmationEmail: vi.fn() }));
+vi.mock("@/lib/membershipEmail", () => ({ sendMembershipConfirmationEmail: vi.fn() }));
 vi.mock("@/lib/adminAlert", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/adminAlert")>()),
   sendAdminAlert: vi.fn(),
@@ -85,6 +87,7 @@ const membershipMetadata = {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true });
+  vi.mocked(appendMemberToAirtable).mockResolvedValue({ inserted: true });
   muteConsole();
 });
 
@@ -158,11 +161,32 @@ describe("POST /api/stripe-webhook — ticket payments", () => {
 });
 
 describe("POST /api/stripe-webhook — membership payments", () => {
-  it("records the member and adds them to GroupMe", async () => {
-    const res = await POST(signed(paymentSucceeded(membershipMetadata)));
+  it("records the member, welcomes them by email, and adds them to GroupMe", async () => {
+    const res = await POST(signed(paymentSucceeded(membershipMetadata, 3635)));
     expect(res.status).toBe(200);
     expect(appendMemberToAirtable).toHaveBeenCalledWith(membershipMetadata, "pi_123");
+    expect(sendMembershipConfirmationEmail).toHaveBeenCalledWith({
+      psuEmail: "abc123@psu.edu",
+      firstName: "Asha",
+      amountPaidCents: 3635,
+    });
     expect(addMemberToGroupMe).toHaveBeenCalledWith(membershipMetadata, "pi_123");
+  });
+
+  it("doesn't email again when /join/return already recorded the signup", async () => {
+    vi.mocked(appendMemberToAirtable).mockResolvedValue({ inserted: false });
+    const res = await POST(signed(paymentSucceeded(membershipMetadata)));
+    expect(res.status).toBe(200);
+    expect(sendMembershipConfirmationEmail).not.toHaveBeenCalled();
+    // The GroupMe add sits outside the email guard, so it still runs.
+    expect(addMemberToGroupMe).toHaveBeenCalledWith(membershipMetadata, "pi_123");
+  });
+
+  it("returns 500 when the Airtable write fails, so Stripe retries the delivery", async () => {
+    vi.mocked(appendMemberToAirtable).mockRejectedValue(new Error("Airtable error: 503"));
+    const res = await POST(signed(paymentSucceeded(membershipMetadata)));
+    expect(res.status).toBe(500);
+    expect(sendMembershipConfirmationEmail).not.toHaveBeenCalled();
   });
 
   it("still acknowledges the payment when GroupMe blows up", async () => {
