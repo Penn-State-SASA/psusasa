@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sanityFetchSingle } from "../../../../sanity/lib/client";
-import { eventCheckinAuthQuery } from "../../../../sanity/lib/queries";
+import { checkinPasswordQuery } from "../../../../sanity/lib/queries";
 import {
   CHECKIN_COOKIE_MAX_AGE_SECONDS,
   CHECKIN_COOKIE_NAME,
@@ -32,12 +32,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const event = await sanityFetchSingle<{
-      _id: string;
-      checkinPassword?: string;
-    }>(eventCheckinAuthQuery, { id: eventId });
+    const stored = await sanityFetchSingle<string>(checkinPasswordQuery, {
+      id: eventId,
+    });
 
-    const actualPassword = event?.checkinPassword ?? "";
+    const actualPassword = typeof stored === "string" ? stored : "";
     const ok = actualPassword.length > 0 && timingSafeEqual(password, actualPassword);
 
     if (!ok) {

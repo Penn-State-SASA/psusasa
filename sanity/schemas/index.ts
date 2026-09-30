@@ -7,6 +7,7 @@ import announcement from "./announcement";
 import siteSettings from "./siteSettings";
 import boardMembers from "./boardMembers";
 import formerBoardMembers from "./formerBoardMembers";
+import checkinPasswords from "./checkinPasswords";
 import homePage from "./homePage";
 import aboutPage from "./aboutPage";
 import joinPage from "./joinPage";
@@ -25,6 +26,7 @@ export const schemaTypes = [
   siteSettings,
   boardMembers,
   formerBoardMembers,
+  checkinPasswords,
   homePage,
   aboutPage,
   joinPage,

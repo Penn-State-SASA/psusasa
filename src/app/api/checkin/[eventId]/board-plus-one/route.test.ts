@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
 import { sanityFetchSingle } from "../../../../../../sanity/lib/client";
-import { boardMembersAuthQuery, eventByIdQuery } from "../../../../../../sanity/lib/queries";
+import { boardMembersPickerQuery, eventByIdQuery } from "../../../../../../sanity/lib/queries";
 import { appendTicketToAirtable, listTicketsForEvent } from "@/lib/airtable";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
 import type { SanityEvent } from "@/lib/types";
@@ -20,15 +20,15 @@ vi.mock("@/lib/airtable", () => ({
 
 const roster = {
   members: [
-    { _key: "bm1", firstName: "Ravi", lastName: "Shah", psuEmail: "rs1@psu.edu" },
-    { _key: "bm2", firstName: "Meera", lastName: "Iyer", psuEmail: "mi2@psu.edu" },
+    { _key: "bm1", firstName: "Ravi", lastName: "Shah" },
+    { _key: "bm2", firstName: "Meera", lastName: "Iyer" },
   ],
 };
 
 function sanityReturns(event: SanityEvent | null) {
   vi.mocked(sanityFetchSingle).mockImplementation((async (query: string) => {
     if (query === eventByIdQuery) return event;
-    if (query === boardMembersAuthQuery) return roster;
+    if (query === boardMembersPickerQuery) return roster;
     return null;
   }) as unknown as typeof sanityFetchSingle);
 }
