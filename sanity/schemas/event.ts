@@ -88,7 +88,7 @@ export default defineType({
       title: "Ticketing Enabled",
       type: "boolean",
       description:
-        "Turn on to sell tickets for this event. Adds a \"Buy Tickets\" button to the event page and unlocks ticket types + the door check-in password below.",
+        "Turn on to sell tickets for this event. Adds a \"Buy Tickets\" button to the event page and unlocks ticket types below. Set the event's door password under Door Check-In Passwords.",
       initialValue: false,
     }),
     defineField({
@@ -199,22 +199,8 @@ export default defineType({
       components: { input: FormerBoardFreeEntryInput },
       hidden: ({ parent }) => !parent?.ticketingEnabled,
     }),
-    defineField({
-      name: "checkinPassword",
-      title: "Door Check-In Password",
-      type: "string",
-      description:
-        "Staff enter this at /checkin to access this event's door check-in list. Set it before the event — without it, no one can check guests in.",
-      hidden: ({ parent }) => !parent?.ticketingEnabled,
-      validation: (Rule) =>
-        Rule.custom((value, context) => {
-          const parent = context.parent as { ticketingEnabled?: boolean } | undefined;
-          if (parent?.ticketingEnabled && !value) {
-            return "Set a check-in password before the event, or staff won't be able to check guests in at the door.";
-          }
-          return true;
-        }).warning(),
-    }),
+    // No door password here: events are publicly readable. It's set under
+    // Door Check-In Passwords instead — see sanity/schemas/checkinPasswords.ts.
   ],
   preview: {
     select: { title: "title", date: "date" },

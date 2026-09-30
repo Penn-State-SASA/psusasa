@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sanityFetchSingle } from "../../../../../../sanity/lib/client";
 import {
   eventByIdQuery,
-  boardMembersAuthQuery,
+  boardMembersPickerQuery,
 } from "../../../../../../sanity/lib/queries";
-import type { SanityEvent, BoardMemberEntry } from "@/lib/types";
+import type { SanityEvent, BoardMemberPickerEntry } from "@/lib/types";
 import { appendTicketToAirtable, listTicketsForEvent } from "@/lib/airtable";
 import { BOARD_PLUS_ONE_TICKET_TYPE_KEY } from "@/lib/boardPlusOne";
 
@@ -42,8 +42,8 @@ export async function POST(
       );
     }
 
-    const roster = await sanityFetchSingle<{ members?: BoardMemberEntry[] }>(
-      boardMembersAuthQuery
+    const roster = await sanityFetchSingle<{ members?: BoardMemberPickerEntry[] }>(
+      boardMembersPickerQuery
     );
     const member = roster?.members?.find((m) => m._key === boardMemberKey);
     if (!member) {

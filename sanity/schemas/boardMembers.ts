@@ -28,23 +28,14 @@ export default defineType({
               type: "string",
               validation: (Rule) => Rule.required(),
             },
-            {
-              name: "psuEmail",
-              title: "PSU Email",
-              type: "string",
-              validation: (Rule) => Rule.required(),
-            },
+            // Names only — this document is publicly readable, so no emails
+            // or other contact details belong here.
           ],
           preview: {
-            select: {
-              firstName: "firstName",
-              lastName: "lastName",
-              psuEmail: "psuEmail",
-            },
-            prepare({ firstName, lastName, psuEmail }) {
+            select: { firstName: "firstName", lastName: "lastName" },
+            prepare({ firstName, lastName }) {
               return {
                 title: [firstName, lastName].filter(Boolean).join(" ") || "Board Member",
-                subtitle: psuEmail,
               };
             },
           },

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "./route";
 import { sanityFetchSingle } from "../../../../sanity/lib/client";
+import { CHECKIN_PASSWORDS_DOC_ID, checkinPasswordQuery } from "../../../../sanity/lib/queries";
 import { CHECKIN_COOKIE_NAME, createSessionToken, verifySessionToken } from "@/lib/checkinAuth";
 import { jsonRequest } from "@/test/request";
 import { muteConsole } from "@/test/console";
@@ -29,8 +30,9 @@ function login(body: Record<string, unknown>, cookie?: string) {
   return POST(jsonRequest("/api/checkin-login", body, { cookie }));
 }
 
-function eventWithPassword(checkinPassword?: string) {
-  vi.mocked(sanityFetchSingle).mockResolvedValue({ _id: "event-a", checkinPassword });
+/** What the password lookup resolves to — null when the event has no password set. */
+function passwordIs(password: string | null) {
+  vi.mocked(sanityFetchSingle).mockResolvedValue(password);
 }
 
 async function eventsInCookie(res: Response): Promise<string[]> {
@@ -64,7 +66,7 @@ describe("POST /api/checkin-login", () => {
   });
 
   it("logs in with the event's password and sets an httpOnly session for that event", async () => {
-    eventWithPassword("door-pass");
+    passwordIs("door-pass");
     const res = await login({ eventId: "event-a", password: "door-pass" });
 
     expect(res.status).toBe(200);
@@ -76,7 +78,7 @@ describe("POST /api/checkin-login", () => {
   });
 
   it("rejects a wrong password, sets no session, and answers only after a delay", async () => {
-    eventWithPassword("door-pass");
+    passwordIs("door-pass");
     const started = Date.now();
     const res = await settle(login({ eventId: "event-a", password: "guess" }));
 
@@ -87,29 +89,49 @@ describe("POST /api/checkin-login", () => {
   });
 
   it("never logs in to an event that has no password set", async () => {
-    // Studio only warns when a ticketed event has no password. An empty
-    // password must lock the board, not open it to any input.
-    eventWithPassword(undefined);
+    // Nothing forces a ticketed event to have an entry under Door Check-In
+    // Passwords. A missing or empty password must lock the board, not open
+    // it to any input.
+    passwordIs(null);
     const res = await settle(login({ eventId: "event-a", password: "anything" }));
     expect(res.status).toBe(401);
+
+    passwordIs("");
+    const empty = await settle(login({ eventId: "event-a", password: "anything" }));
+    expect(empty.status).toBe(401);
   });
 
   it("rejects an unknown event the same way as a wrong password", async () => {
-    vi.mocked(sanityFetchSingle).mockResolvedValue(null);
+    passwordIs(null);
     const res = await settle(login({ eventId: "nope", password: "door-pass" }));
     expect(res.status).toBe(401);
   });
 
+  it("reads the password from the document hidden from public reads", async () => {
+    // Door passwords used to be a field on the event, and the Sanity
+    // dataset is public — anyone with the project ID could query every
+    // event's password straight from Sanity's API. Sanity only hides
+    // documents whose _id has a dot from anonymous readers, so the
+    // passwords document's id must keep one, and the login must read from
+    // it for the event being unlocked.
+    expect(CHECKIN_PASSWORDS_DOC_ID).toContain(".");
+    expect(checkinPasswordQuery).toContain(`_id == "${CHECKIN_PASSWORDS_DOC_ID}"`);
+
+    passwordIs("door-pass");
+    await login({ eventId: "event-a", password: "door-pass" });
+    expect(sanityFetchSingle).toHaveBeenCalledWith(checkinPasswordQuery, { id: "event-a" });
+  });
+
   it("keeps events already unlocked on this device when unlocking another", async () => {
     // One staffer can run the door for two events on the same phone.
-    eventWithPassword("door-pass");
+    passwordIs("door-pass");
     const existing = `${CHECKIN_COOKIE_NAME}=${await createSessionToken(["event-b"])}`;
     const res = await login({ eventId: "event-a", password: "door-pass" }, existing);
     expect(await eventsInCookie(res)).toEqual(["event-b", "event-a"]);
   });
 
   it("doesn't carry over events from a forged existing cookie", async () => {
-    eventWithPassword("door-pass");
+    passwordIs("door-pass");
     const res = await login(
       { eventId: "event-a", password: "door-pass" },
       `${CHECKIN_COOKIE_NAME}=forged.token`

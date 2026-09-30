@@ -30,9 +30,9 @@ NEXT_PUBLIC_SANITY_PROJECT_ID=your_project_id
 NEXT_PUBLIC_SANITY_DATASET=production
 NEXT_PUBLIC_SANITY_API_VERSION=2024-01-01
 SANITY_REVALIDATE_SECRET=your_webhook_secret
-# The dataset is private (it holds door passwords), so the site reads it
-# with this Viewer token — create one at sanity.io/manage > API > Tokens.
-# Never prefix it with NEXT_PUBLIC_.
+# The dataset is public, but door passwords sit in a document Sanity hides
+# from anonymous readers; the site reads it with this Viewer token — create
+# one at sanity.io/manage > API > Tokens. Never prefix it with NEXT_PUBLIC_.
 SANITY_API_READ_TOKEN=sk...
 
 # Stripe (membership payments)
@@ -213,8 +213,9 @@ sanity/
     image.ts    # Image URL builder
     queries.ts  # All GROQ queries
     types.ts    # TypeScript interfaces for Sanity content
-  schemas/      # event (incl. ticketTypes[] + checkinPassword), eventCategory,
-                # officer, galleryImage, announcement, siteSettings, homePage,
+  schemas/      # event (incl. ticketTypes[]), checkinPasswords (door passwords,
+                # hidden from public reads), eventCategory, officer,
+                # galleryImage, announcement, siteSettings, homePage,
                 # aboutPage, joinPage, membershipFormCopy,
                 # membershipConfirmation, notFoundPage
   structure.ts  # Studio sidebar layout (singletons vs collections)
@@ -265,7 +266,7 @@ Replaces Doorlist. Current SASA members automatically get a cheaper (or free) pr
 1. Open the event in **Studio > Event** and toggle **Ticketing Enabled**
 2. Under **Ticket Types**, add one entry per tier (e.g. "General Admission", "VIP"), each with its own **Member Price** and **Non-Member Price** (in cents) and **Sales Open**
 3. Optionally set an **Event Capacity** (the max people for the whole event, across all ticket types — blank means unlimited) and an **At-Door Price** (in cents, recorded on each at-door sale — blank means $0)
-4. Set a **Door Check-In Password** for this event — staff use it at `/checkin` on the night of the event. Studio will warn (but not block) if this is left blank while ticketing is on
+4. In **Studio > Door Check-In Passwords**, add the event with a password of at least 12 characters and **Publish** — staff use it at `/checkin` on the night of the event. Without one, no one can open the door list. (Passwords live there, not on the event, because event documents are publicly readable — the Sanity dataset is public, and only that page is hidden from it.)
 5. Click **Publish** — a "Buy Tickets" button now appears on the event's page, linking to `/events/[slug]/tickets`
 
 Buyers can pay by card (Stripe, same-session) or choose "pay cash at the door," which puts them on the door list and shows as due on the check-in board. Event Capacity counts paid tickets of every type, at-door sales, and board +1 guests. Unpaid cash orders don't count (entry isn't guaranteed) until the door marks them paid, and former board members never count. Once the event is full, every ticket type shows as **Sold out** online and the door can't add more at-door sales (board +1s are still allowed).

@@ -27,7 +27,7 @@ export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0]
 
 // Looked up by Sanity _id rather than slug — Airtable ticket rows reference
 // the event by _id, so purchase/capacity checks need an _id-keyed lookup.
-// Deliberately excludes checkinPassword; this query's results can reach the browser.
+// This query's results can reach the browser.
 export const eventByIdQuery = `*[_type == "event" && _id == $id][0] {
   _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
   ticketingEnabled, cashPaymentEnabled, boardPlusOneEnabled, formerBoardExcludedKeys, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, salesOpen },
@@ -39,23 +39,21 @@ export const ticketedEventsQuery = `*[_type == "event" && ticketingEnabled == tr
   _id, title, date
 }`;
 
-// Server-only: used exclusively by the check-in login route. Kept separate
-// from eventByIdQuery so checkinPassword never ends up in a client-facing response.
-export const eventCheckinAuthQuery = `*[_type == "event" && _id == $id][0] {
-  _id, checkinPassword
-}`;
+// The dataset is public, but Sanity only serves documents whose _id has no
+// dot to anonymous readers. The dot here is what keeps the door passwords
+// out of public reach — never move them onto the event or any document
+// with a plain id. See sanity/schemas/checkinPasswords.ts.
+export const CHECKIN_PASSWORDS_DOC_ID = "secrets.checkinPasswords";
 
-// Client-safe: no email. Used to populate the "Add +1" board-member picker
-// on the check-in board.
+// Server-only: used exclusively by the check-in login route. Returns the
+// event's door password, or null when none is set.
+export const checkinPasswordQuery = `*[_id == "${CHECKIN_PASSWORDS_DOC_ID}"][0].entries[event._ref == $id][0].password`;
+
+// Names only. Populates the "Add +1" board-member picker on the check-in
+// board, and the board-plus-one route resolves the picked _key back to a
+// name with it.
 export const boardMembersPickerQuery = `*[_id == "boardMembers"][0] {
   members[]{ _key, firstName, lastName }
-}`;
-
-// Server-only: used exclusively by the board-plus-one route to resolve a
-// selected _key back to a real person. Kept separate from the picker query
-// so psuEmail never ends up in a client-facing response.
-export const boardMembersAuthQuery = `*[_id == "boardMembers"][0] {
-  members[]{ _key, firstName, lastName, psuEmail }
 }`;
 
 // Client-safe: names only. Merged into every ticketed event's door list as

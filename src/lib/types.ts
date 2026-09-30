@@ -60,10 +60,6 @@ export interface BoardMemberPickerEntry {
   lastName: string;
 }
 
-export interface BoardMemberEntry extends BoardMemberPickerEntry {
-  psuEmail: string;
-}
-
 export interface FormerBoardMember {
   _key: string;
   firstName: string;
