@@ -30,6 +30,10 @@ NEXT_PUBLIC_SANITY_PROJECT_ID=your_project_id
 NEXT_PUBLIC_SANITY_DATASET=production
 NEXT_PUBLIC_SANITY_API_VERSION=2024-01-01
 SANITY_REVALIDATE_SECRET=your_webhook_secret
+# The dataset is private (it holds door passwords), so the site reads it
+# with this Viewer token — create one at sanity.io/manage > API > Tokens.
+# Never prefix it with NEXT_PUBLIC_.
+SANITY_API_READ_TOKEN=sk...
 
 # Stripe (membership payments)
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_or_live_...
