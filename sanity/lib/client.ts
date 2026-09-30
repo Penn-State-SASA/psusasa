@@ -14,6 +14,16 @@ export const client = projectId
       // ticketing/check-in data (is ticketing on, current password, live
       // capacity) — confirmed in practice, not just theoretical.
       useCdn: false,
+      // The dataset is private — it holds each event's door check-in
+      // password and board members' PSU emails — so reads need this token.
+      // Server-only: never give it a NEXT_PUBLIC_ prefix, which would ship
+      // it to every visitor's browser. Studio signs in on its own and
+      // doesn't use it.
+      token: process.env.SANITY_API_READ_TOKEN,
+      // With a token, this apiVersion's default "raw" perspective returns
+      // unpublished drafts alongside published documents. Pin to what's
+      // actually been published.
+      perspective: "published",
     })
   : null;
 
