@@ -16,6 +16,12 @@ import QrScanner, { type ScanStatus } from "@/components/checkin/QrScanner";
 
 const POLL_INTERVAL_MS = 3000;
 
+interface ScanPromptState {
+  ticket: TicketRecord;
+  /** How many of the party staff are checking in now. */
+  count: number;
+}
+
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -51,12 +57,10 @@ export default function CheckinBoard({
 
   const [scanning, setScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
-  // A scanned ticket that needs a tap (cash, or a group) — the list shows
-  // just that row until it's done or staff choose "Show all".
-  const [pinnedId, setPinnedId] = useState<string | null>(null);
-  // Set when a scan hands a ticket to the list: once that order is fully
-  // in, the camera comes back for the next guest instead of the keyboard.
-  const resumeScanRef = useRef(false);
+  const scanStatusIdRef = useRef(0);
+  // A scanned ticket that needs staff input (a group, or cash to collect)
+  // — asked over the live camera, so the door never leaves the scanner.
+  const [scanPrompt, setScanPrompt] = useState<ScanPromptState | null>(null);
 
   // At-door taps not yet reflected in `tickets`: those still waiting to be
   // sent, plus the batch whose request is out. Kept in refs for the sync
@@ -227,47 +231,46 @@ export default function CheckinBoard({
   }
 
   // Once an order is fully in, the door moves on to the next guest: clear
-  // the box and keep the keyboard up — or, if that guest was scanned, bring
-  // the camera back. Must run synchronously inside the tap/keypress, or iOS
-  // won't reopen the keyboard on focus().
+  // the box and keep the keyboard up. Must run synchronously inside the
+  // tap/keypress, or iOS won't reopen the keyboard on focus().
   function resetSearch() {
     setSearch("");
-    setPinnedId(null);
-    if (resumeScanRef.current) {
-      resumeScanRef.current = false;
-      openScanner();
-      return;
-    }
     searchRef.current?.focus();
   }
 
   function openScanner() {
     setScanStatus(null);
+    setScanPrompt(null);
     setScanning(true);
   }
 
   function closeScanner() {
     setScanning(false);
     setScanStatus(null);
+    setScanPrompt(null);
   }
 
-  function showAll() {
-    setPinnedId(null);
-    resumeScanRef.current = false;
+  // Every scan outcome goes through here: a fresh id so the scanner flashes
+  // even when the same result repeats, plus a buzz staff can feel.
+  function reportScan(tone: ScanStatus["tone"], message: string) {
+    scanStatusIdRef.current += 1;
+    setScanStatus({ id: scanStatusIdRef.current, tone, message });
+    navigator.vibrate?.(tone === "ok" ? 100 : [80, 60, 80]);
   }
 
-  // A card-paid single ticket checks in on the spot and the camera stays up
-  // for the next guest. Anything that needs staff — cash to collect, a
-  // group arriving in stages — closes the camera and shows just that row.
-  // A scan never undoes a check-in.
+  // A card-paid single ticket checks in on the spot. Anything that needs
+  // staff — cash to collect, a group arriving in stages — opens a prompt
+  // over the camera, defaulting to everyone still to arrive. A scan never
+  // undoes a check-in.
   async function handleScan(text: string) {
+    if (scanPrompt) return; // staff are still answering the last one
     const scanned = parseTicketQr(text);
     if (!scanned) {
-      setScanStatus({ tone: "error", message: "Not a SASA ticket" });
+      reportScan("error", "Not a SASA ticket");
       return;
     }
     if (scanned.eventId !== eventId) {
-      setScanStatus({ tone: "error", message: "This ticket is for a different event" });
+      reportScan("error", "This ticket is for a different event");
       return;
     }
 
@@ -283,31 +286,52 @@ export default function CheckinBoard({
       }
     }
     if (!ticket || isAtDoorTicket(ticket)) {
-      setScanStatus({ tone: "error", message: "Not on this event's list" });
+      reportScan("error", "Not on this event's list");
       return;
     }
 
     const name = `${ticket.firstName} ${ticket.lastName}`;
     if (ticket.checkedInCount >= ticket.quantity) {
-      setScanStatus({ tone: "warn", message: `Already checked in: ${name}` });
+      reportScan("warn", `Already checked in: ${name}`);
       return;
     }
 
     if (ticket.quantity === 1 && ticket.paymentMethod === "Card") {
-      setScanStatus({ tone: "ok", message: `✓ ${name} checked in` });
-      navigator.vibrate?.(100);
+      reportScan("ok", `✓ ${name} checked in`);
       const ok = await sendMark(ticket.id, checkinUpdates(ticket, 1));
-      if (!ok) {
-        setScanStatus({ tone: "error", message: `Couldn't check in ${name} — try again` });
-      }
+      if (!ok) reportScan("error", `Couldn't check in ${name} — try again`);
       return;
     }
 
-    closeScanner();
-    setSearch("");
-    setPinnedId(ticket.id);
-    resumeScanRef.current = true;
-    if (ticket.quantity === 1) handleTap(ticket); // cash: opens Collect cash
+    navigator.vibrate?.(50);
+    setScanPrompt({ ticket, count: ticket.quantity - ticket.checkedInCount });
+  }
+
+  // The prompt's ticket as the board knows it now — another device may
+  // have checked some of the party in while staff were counting.
+  const promptTicket = scanPrompt
+    ? (tickets.find((t) => t.id === scanPrompt.ticket.id) ?? scanPrompt.ticket)
+    : null;
+  const promptRemaining = promptTicket ? promptTicket.quantity - promptTicket.checkedInCount : 0;
+  const promptCount = scanPrompt ? Math.min(scanPrompt.count, promptRemaining) : 0;
+
+  async function confirmScanPrompt() {
+    if (!promptTicket) return;
+    setScanPrompt(null);
+    const name = `${promptTicket.firstName} ${promptTicket.lastName}`;
+    if (promptCount <= 0) {
+      reportScan("warn", `Already checked in: ${name}`);
+      return;
+    }
+    const next = promptTicket.checkedInCount + promptCount;
+    reportScan(
+      "ok",
+      promptTicket.quantity === 1
+        ? `✓ ${name} checked in`
+        : `✓ ${name}: ${promptCount} checked in (${next}/${promptTicket.quantity})`
+    );
+    const ok = await sendMark(promptTicket.id, checkinUpdates(promptTicket, next));
+    if (!ok) reportScan("error", `Couldn't check in ${name} — try again`);
   }
 
   // Single-ticket orders keep the simple whole-row tap-to-toggle. Checking
@@ -415,11 +439,8 @@ export default function CheckinBoard({
   }
 
   const filtered = useMemo(
-    () =>
-      pinnedId
-        ? tickets.filter((t) => t.id === pinnedId)
-        : tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
-    [tickets, search, pinnedId]
+    () => tickets.filter((t) => !isAtDoorTicket(t) && matchesSearch(t, search)),
+    [tickets, search]
   );
 
   // Everyone still to arrive first (partial parties included — they still
@@ -601,10 +622,7 @@ export default function CheckinBoard({
           ref={searchRef}
           type="search"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            showAll();
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           onKeyDown={handleSearchKeyDown}
           placeholder="Search by name, email, or PSU ID..."
           autoFocus
@@ -633,27 +651,6 @@ export default function CheckinBoard({
           </button>
         )}
       </div>
-
-      {pinnedId && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-sasa-gold-600/40 bg-sasa-gold-400/10 px-4 py-2 text-sm">
-          <span className="mr-auto font-medium text-sasa-red-900">Scanned ticket</span>
-          <button
-            onClick={showAll}
-            className="rounded border-2 border-sasa-gold-400 px-3 py-1 text-xs font-semibold text-sasa-gold-600 hover:bg-sasa-gold-400/10"
-          >
-            Show all
-          </button>
-          <button
-            onClick={() => {
-              showAll();
-              openScanner();
-            }}
-            className="rounded bg-sasa-red-900 px-3 py-1 text-xs font-semibold text-white hover:bg-sasa-red-700"
-          >
-            Scan next
-          </button>
-        </div>
-      )}
 
       {enterTarget && (
         <p className="-mt-2 mb-4 text-xs text-sasa-neutral-500">
@@ -782,7 +779,18 @@ export default function CheckinBoard({
       </div>
 
       {scanning && (
-        <QrScanner onDetect={handleScan} onClose={closeScanner} status={scanStatus} />
+        <QrScanner onDetect={handleScan} onClose={closeScanner} status={scanStatus}>
+          {promptTicket && (
+            <ScanPartyPrompt
+              ticket={promptTicket}
+              count={promptCount}
+              remaining={promptRemaining}
+              onCountChange={(count) => setScanPrompt((p) => (p ? { ...p, count } : p))}
+              onConfirm={confirmScanPrompt}
+              onCancel={() => setScanPrompt(null)}
+            />
+          )}
+        </QrScanner>
       )}
 
       {confirmCash && (
@@ -906,6 +914,100 @@ function Stat({
       <p className={`text-lg font-semibold ${warn ? "text-amber-600" : "text-sasa-red-900"}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+// Shown over the live camera when a scan needs staff: how many of a group
+// are here (defaulting to everyone left), and the cash to collect for them.
+function ScanPartyPrompt({
+  ticket,
+  count,
+  remaining,
+  onCountChange,
+  onConfirm,
+  onCancel,
+}: {
+  ticket: TicketRecord;
+  count: number;
+  remaining: number;
+  onCountChange: (count: number) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isGroup = ticket.quantity > 1;
+  // Same proportional estimate as the row's "Owes" badge, for just the
+  // people coming in now.
+  const collectCents =
+    amountOwedCents(ticket) -
+    amountOwedCents({ ...ticket, checkedInCount: ticket.checkedInCount + count });
+  const checkInLabel = isGroup ? `Check in ${count}` : "Check in";
+
+  return (
+    <div role="group" aria-label="Scanned ticket" className="rounded-xl bg-white p-4 shadow-lg">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <p className="font-heading text-lg font-semibold text-sasa-red-900">
+          {ticket.firstName} {ticket.lastName}
+        </p>
+        <p className="text-sm text-sasa-neutral-500">
+          {isGroup
+            ? `${ticket.checkedInCount} of ${ticket.quantity} already in`
+            : ticket.ticketTypeName}
+        </p>
+      </div>
+
+      {isGroup && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-sasa-red-900">How many are here now?</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onCountChange(count - 1)}
+              disabled={count <= 1}
+              aria-label="Fewer people"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-xl font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span
+              data-testid="scan-prompt-count"
+              className="min-w-[2rem] text-center text-2xl font-semibold text-sasa-red-900"
+            >
+              {count}
+            </span>
+            <button
+              onClick={() => onCountChange(count + 1)}
+              disabled={count >= remaining}
+              aria-label="More people"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 text-xl font-semibold text-sasa-red-900 hover:bg-gray-50 disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
+
+      {collectCents > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
+          Collect {formatPrice(collectCents)} cash
+        </p>
+      )}
+
+      <div className="mt-4 flex gap-3">
+        <button
+          onClick={onCancel}
+          className="rounded border-2 border-sasa-gold-400 px-4 py-3 text-sm font-semibold text-sasa-gold-600 hover:bg-sasa-gold-400/10"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          className="flex-1 rounded bg-sasa-red-900 px-4 py-3 text-sm font-semibold text-white hover:bg-sasa-red-700"
+        >
+          {collectCents > 0
+            ? `Collected ${formatPrice(collectCents)} — ${checkInLabel}`
+            : checkInLabel}
+        </button>
+      </div>
     </div>
   );
 }
