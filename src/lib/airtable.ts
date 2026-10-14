@@ -474,6 +474,8 @@ export interface TicketRecord {
   checkedInCount: number;
   checkedInAt: string | null;
   boardMemberName: string | null;
+  /** A real Stripe PaymentIntent id (starts with "pi_") — null for cash, at-door, free, or former-board rows, which reuse this Airtable column for other dedupe markers. */
+  stripePaymentIntentId: string | null;
 }
 
 export async function listTicketsForEvent(
@@ -507,6 +509,11 @@ export async function listTicketsForEvent(
       checkedInCount: Number(f["Checked In Count"]) || 0,
       checkedInAt: f["Checked In At"] ? String(f["Checked In At"]) : null,
       boardMemberName: f["Board Member"] ? String(f["Board Member"]) : null,
+      stripePaymentIntentId:
+        typeof f["Stripe Payment Intent ID"] === "string" &&
+        f["Stripe Payment Intent ID"].startsWith("pi_")
+          ? f["Stripe Payment Intent ID"]
+          : null,
     };
   });
 }
