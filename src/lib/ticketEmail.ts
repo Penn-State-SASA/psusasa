@@ -26,6 +26,14 @@ interface CashOrderConfirmationDetails extends TicketQrIds {
   amountDueCents: number;
 }
 
+interface TicketCancellationDetails {
+  contactEmail: string;
+  firstName: string;
+  eventName: string;
+  /** What was actually refunded via Stripe, in cents — 0/undefined when nothing was charged. */
+  refundedCents?: number;
+}
+
 const QR_CONTENT_ID = "ticket-qr";
 
 function formatPrice(cents: number): string {
@@ -155,6 +163,41 @@ export async function sendTicketConfirmationEmail(
       "SASA",
     ],
     details
+  );
+}
+
+// Event cancellations. One-time, admin-triggered — not part of the normal
+// purchase flow. No QR code attached; there's nothing left to check in for.
+export async function sendTicketCancellationEmail(
+  details: TicketCancellationDetails
+): Promise<boolean> {
+  const refundedCents = details.refundedCents ?? 0;
+  return sendTicketEmail(
+    "Ticket cancellation",
+    details.contactEmail,
+    `${details.eventName} has been cancelled`,
+    () => [
+      greetingFor(details.firstName),
+      "",
+      `We're sorry to let you know that ${details.eventName} has unfortunately`,
+      "been cancelled due to unforeseen circumstances.",
+      "",
+      ...(refundedCents > 0
+        ? [
+            `Your payment of ${formatPrice(refundedCents)} has been refunded in full.`,
+            "Refunds typically take 5–10 business days to appear on your",
+            "statement, depending on your bank — no action is needed on your end.",
+          ]
+        : [
+            "You weren't charged for this ticket, so there's nothing further",
+            "you need to do.",
+          ]),
+      "",
+      "We apologize for the inconvenience and hope to see you at a future event.",
+      "",
+      "SASA",
+    ],
+    {}
   );
 }
 

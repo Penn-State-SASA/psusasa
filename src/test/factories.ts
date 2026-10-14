@@ -47,6 +47,7 @@ export function makeTicketRecord(overrides: Partial<TicketRecord> = {}): TicketR
     checkedInCount: 0,
     checkedInAt: null,
     boardMemberName: null,
+    stripePaymentIntentId: null,
     ...overrides,
   };
 }
