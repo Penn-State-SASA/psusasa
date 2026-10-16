@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendTicketReminderEmail } from "@/lib/ticketEmail";
 
-// One-time preview tool: sends the reminder email (with and without a
-// location, since that line is conditional) to the exec inbox, so you can
-// see exactly what buyers will get before relying on the real cron job.
-// Touches no real event/ticket data. Delete this route once you've seen it.
+// One-time preview tool: sends every variant of the reminder email (with vs.
+// without a location, and sent-in-advance vs. sent-same-day) to the exec
+// inbox, so you can see exactly what buyers will get before relying on the
+// real cron job. Touches no real event/ticket data. Delete this route once
+// you've seen it.
 const PREVIEW_TO = "exec.psusasa@gmail.com";
 
 export async function GET(req: NextRequest) {
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
     eventName: "Diwali Night",
     eventDateTime: "Saturday, October 18 at 7:00 PM",
     eventLocation: "HUB Flex Theatre",
+    isToday: false,
   });
 
   const sentWithoutLocation = await sendTicketReminderEmail({
@@ -27,7 +29,22 @@ export async function GET(req: NextRequest) {
     eventName: "Diwali Night",
     eventDateTime: "Saturday, October 18 at 7:00 PM",
     eventLocation: null,
+    isToday: false,
   });
 
-  return NextResponse.json({ to: PREVIEW_TO, sentWithLocation, sentWithoutLocation });
+  const sentSameDay = await sendTicketReminderEmail({
+    contactEmail: PREVIEW_TO,
+    firstName: "Test",
+    eventName: "Diwali Night",
+    eventDateTime: "Saturday, October 18 at 7:00 PM",
+    eventLocation: "HUB Flex Theatre",
+    isToday: true,
+  });
+
+  return NextResponse.json({
+    to: PREVIEW_TO,
+    sentWithLocation,
+    sentWithoutLocation,
+    sentSameDay,
+  });
 }
