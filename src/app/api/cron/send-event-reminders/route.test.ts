@@ -151,6 +151,45 @@ describe("GET /api/cron/send-event-reminders", () => {
     expect(markReminderSent).not.toHaveBeenCalled();
   });
 
+  describe("isToday", () => {
+    beforeEach(() => {
+      // 11am Eastern, June 15 — fixed so "same calendar day" comparisons
+      // (which are timezone-sensitive) aren't at the mercy of when CI runs.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-06-15T15:00:00.000Z"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("is true when the event is later the same Eastern calendar day", async () => {
+      vi.mocked(sanityFetch).mockResolvedValue([
+        reminderEvent({ date: "2026-06-15T23:00:00.000Z", reminderHoursBefore: 24 }),
+      ]);
+      vi.mocked(listTicketsForEvent).mockResolvedValue([makeTicketRecord({ id: "rec1" })]);
+
+      await GET(cronRequest());
+
+      expect(vi.mocked(sendTicketReminderEmail).mock.calls[0][0]).toMatchObject({
+        isToday: true,
+      });
+    });
+
+    it("is false when the event is on a later Eastern calendar day", async () => {
+      vi.mocked(sanityFetch).mockResolvedValue([
+        reminderEvent({ date: "2026-06-16T15:00:00.000Z", reminderHoursBefore: 24 }),
+      ]);
+      vi.mocked(listTicketsForEvent).mockResolvedValue([makeTicketRecord({ id: "rec1" })]);
+
+      await GET(cronRequest());
+
+      expect(vi.mocked(sendTicketReminderEmail).mock.calls[0][0]).toMatchObject({
+        isToday: false,
+      });
+    });
+  });
+
   it("checks multiple reminder-enabled events independently", async () => {
     vi.mocked(sanityFetch).mockResolvedValue([
       reminderEvent({ _id: "event-1", title: "Diwali Night" }),
