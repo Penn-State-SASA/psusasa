@@ -81,6 +81,7 @@ export function mergeFormerBoardGuests(
         checkedInAt: null,
         boardMemberName: null,
         stripePaymentIntentId: null,
+        reminderSent: false,
       })
     );
 

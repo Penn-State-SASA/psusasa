@@ -8,6 +8,7 @@ import {
   hasUsedMemberPricing,
   listTicketsForEvent,
   lookupCurrentMember,
+  markReminderSent,
   sumCapacityUsed,
   updateTicketCheckinState,
   upsertFormerBoardCheckin,
@@ -402,6 +403,7 @@ describe("listTicketsForEvent", () => {
               Paid: false,
               "Checked In Count": 1,
               "Board Member": "Ravi Shah",
+              "Reminder Sent": true,
             },
           },
         ],
@@ -419,6 +421,7 @@ describe("listTicketsForEvent", () => {
       checkedInAt: null,
       memberYear: null,
       boardMemberName: "Ravi Shah",
+      reminderSent: true,
     });
   });
 
@@ -440,6 +443,7 @@ describe("listTicketsForEvent", () => {
       amountPaidCents: 0,
       checkedInCount: 0,
       boardMemberName: null,
+      reminderSent: false,
     });
   });
 });
@@ -553,5 +557,19 @@ describe("getTicketRecordInfo", () => {
   it("treats an unreadable quantity as zero, so no check-in count is valid", async () => {
     fetchMock.mockResolvedValue(json({ id: "rec1", fields: { "Event ID": "event-1" } }));
     expect(await getTicketRecordInfo("rec1")).toEqual({ eventId: "event-1", quantity: 0 });
+  });
+});
+
+describe("markReminderSent", () => {
+  it("writes Reminder Sent to the given record", async () => {
+    fetchMock.mockResolvedValue(json({}));
+    await markReminderSent("rec1");
+    expect(bodyOfCall()).toEqual({ fields: { "Reminder Sent": true } });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/rec1$/);
+  });
+
+  it("throws when Airtable rejects the update", async () => {
+    fetchMock.mockResolvedValue(json({ error: "NOT_FOUND" }, 404));
+    await expect(markReminderSent("recMissing")).rejects.toThrow(/Airtable update error: 404/);
   });
 });

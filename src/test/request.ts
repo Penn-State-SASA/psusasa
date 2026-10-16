@@ -16,8 +16,11 @@ export function jsonRequest(
 }
 
 /** A GET, as middleware sees a page navigation or API fetch. */
-export function getRequest(path: string, { cookie }: { cookie?: string } = {}): NextRequest {
+export function getRequest(
+  path: string,
+  { cookie, headers }: { cookie?: string; headers?: Record<string, string> } = {}
+): NextRequest {
   return new NextRequest(new URL(path, "http://localhost"), {
-    headers: cookie ? { cookie } : {},
+    headers: { ...headers, ...(cookie ? { cookie } : {}) },
   });
 }

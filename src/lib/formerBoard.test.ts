@@ -69,6 +69,7 @@ describe("mergeFormerBoardGuests", () => {
         checkedInAt: null,
         boardMemberName: null,
         stripePaymentIntentId: null,
+        reminderSent: false,
       },
     ]);
     expect(isFormerBoardTicket(merged[1])).toBe(true);
