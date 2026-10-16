@@ -208,6 +208,24 @@ describe("sendTicketReminderEmail", () => {
     expect(send.mock.calls[0][0].text).not.toContain("Where:");
   });
 
+  it("says the event is today when sent same-day", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, isToday: true });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.subject).toBe("Reminder: Garba Night is today!");
+    expect(msg.text).toContain("Just a reminder that Garba Night is today:");
+  });
+
+  it("says the event is coming up when sent ahead of time", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, isToday: false });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.subject).toBe("Reminder: Garba Night is coming up!");
+    expect(msg.text).toContain("Just a reminder that Garba Night is coming up:");
+  });
+
   it("reports failure when Resend answers with an error", async () => {
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
     expect(await sendTicketReminderEmail(reminder)).toBe(false);

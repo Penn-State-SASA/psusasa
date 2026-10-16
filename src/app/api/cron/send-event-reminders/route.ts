@@ -27,6 +27,16 @@ interface ReminderEvent {
   reminderHoursBefore: number;
 }
 
+function isSameDayInTz(a: Date, b: Date, timeZone: string): boolean {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(a) === fmt.format(b);
+}
+
 function formatEventDateTime(dateIso: string): string {
   const d = new Date(dateIso);
   const date = d.toLocaleDateString("en-US", {
@@ -84,6 +94,7 @@ export async function GET(req: NextRequest) {
     const eventDateTime = formatEventDateTime(event.date);
     const eventLocation =
       event.location && !event.hideLocation ? event.location : null;
+    const isToday = isSameDayInTz(new Date(event.date), new Date(now), TIME_ZONE);
 
     let sent = 0;
     let alreadySent = 0;
@@ -106,6 +117,7 @@ export async function GET(req: NextRequest) {
         eventName: event.title,
         eventDateTime,
         eventLocation,
+        isToday,
         recordId: t.id,
         eventId: event._id,
       });

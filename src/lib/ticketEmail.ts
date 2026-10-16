@@ -42,6 +42,8 @@ interface TicketReminderDetails extends TicketQrIds {
   eventDateTime: string;
   /** Omit, or leave blank, when the event's location is hidden. */
   eventLocation?: string | null;
+  /** True when the reminder is going out on the same calendar day as the event — swaps "is coming up" for "is today". */
+  isToday?: boolean;
 }
 
 const QR_CONTENT_ID = "ticket-qr";
@@ -249,14 +251,15 @@ export async function sendCashOrderConfirmationEmail(
 export async function sendTicketReminderEmail(
   details: TicketReminderDetails
 ): Promise<boolean> {
+  const when = details.isToday ? "today" : "coming up";
   return sendTicketEmail(
     "Ticket reminder",
     details.contactEmail,
-    `Reminder: ${details.eventName} is coming up!`,
+    `Reminder: ${details.eventName} is ${when}!`,
     (hasQr) => [
       greetingFor(details.firstName),
       "",
-      `Just a reminder that ${details.eventName} is coming up:`,
+      `Just a reminder that ${details.eventName} is ${when}:`,
       "",
       `When: ${details.eventDateTime}`,
       ...(details.eventLocation ? [`Where: ${details.eventLocation}`] : []),
