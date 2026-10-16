@@ -39,6 +39,12 @@ export const ticketedEventsQuery = `*[_type == "event" && ticketingEnabled == tr
   _id, title, date
 }`;
 
+// Server-only: used by the reminder-email cron job. Deliberately narrow —
+// just enough to compute each event's reminder window and label the email.
+export const reminderEnabledEventsQuery = `*[_type == "event" && ticketingEnabled == true && reminderEmailEnabled == true && defined(reminderHoursBefore)] {
+  _id, title, slug, date, location, hideLocation, reminderHoursBefore
+}`;
+
 // The dataset is public, but Sanity only serves documents whose _id has no
 // dot to anonymous readers. The dot here is what keeps the door passwords
 // out of public reach — never move them onto the event or any document

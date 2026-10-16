@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendCashOrderConfirmationEmail, sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import {
+  sendCashOrderConfirmationEmail,
+  sendTicketConfirmationEmail,
+  sendTicketReminderEmail,
+} from "@/lib/ticketEmail";
 import { MEMBERSHIP_FROM, REPLY_TO, TICKETS_FROM } from "@/lib/emailSender";
 import { ticketQrPng } from "@/lib/ticketQr";
 import { muteConsole } from "@/test/console";
@@ -167,6 +171,46 @@ describe("sendCashOrderConfirmationEmail", () => {
   it("reports failure when Resend answers with an error", async () => {
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
     expect(await sendCashOrderConfirmationEmail(cash)).toBe(false);
+  });
+});
+
+describe("sendTicketReminderEmail", () => {
+  const reminder = {
+    contactEmail: "dev@example.com",
+    firstName: "Dev",
+    eventName: "Garba Night",
+    eventDateTime: "Saturday, October 18 at 7:00 PM",
+    eventLocation: "HUB Flex Theatre",
+    recordId: "recBBBBBBBBBBBBBB",
+    eventId: "event-1",
+  };
+
+  it("reminds them when and where, and includes the QR code", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    expect(await sendTicketReminderEmail(reminder)).toBe(true);
+
+    const msg = send.mock.calls[0][0];
+    expect(msg).toMatchObject({
+      from: TICKETS_FROM,
+      replyTo: REPLY_TO,
+      to: "dev@example.com",
+      subject: "Reminder: Garba Night is coming up!",
+    });
+    expect(msg.text).toContain("When: Saturday, October 18 at 7:00 PM");
+    expect(msg.text).toContain("Where: HUB Flex Theatre");
+    expect(msg.text).toContain("Show the QR code in this email at the door.");
+    expect(msg.attachments?.[0]).toMatchObject({ contentId: "ticket-qr" });
+  });
+
+  it("omits the Where line when no location is given", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, eventLocation: null });
+    expect(send.mock.calls[0][0].text).not.toContain("Where:");
+  });
+
+  it("reports failure when Resend answers with an error", async () => {
+    send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
+    expect(await sendTicketReminderEmail(reminder)).toBe(false);
   });
 });
 

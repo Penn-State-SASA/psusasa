@@ -476,6 +476,7 @@ export interface TicketRecord {
   boardMemberName: string | null;
   /** A real Stripe PaymentIntent id (starts with "pi_") — null for cash, at-door, free, or former-board rows, which reuse this Airtable column for other dedupe markers. */
   stripePaymentIntentId: string | null;
+  reminderSent: boolean;
 }
 
 export async function listTicketsForEvent(
@@ -514,6 +515,7 @@ export async function listTicketsForEvent(
         f["Stripe Payment Intent ID"].startsWith("pi_")
           ? f["Stripe Payment Intent ID"]
           : null,
+      reminderSent: Boolean(f["Reminder Sent"]),
     };
   });
 }
@@ -565,6 +567,25 @@ export async function updateTicketCheckinState(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ fields }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable update error: ${res.status} ${body}`);
+  }
+}
+
+// Marks a single row's reminder email as sent — called once per row right
+// after that row's email actually succeeds, so a later cron run (same day
+// or the next) never re-sends to someone already notified.
+export async function markReminderSent(recordId: string): Promise<void> {
+  const res = await fetch(`${ticketsBaseUrl()}/${recordId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fields: { "Reminder Sent": true } }),
   });
 
   if (!res.ok) {

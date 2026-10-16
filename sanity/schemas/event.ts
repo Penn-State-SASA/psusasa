@@ -188,6 +188,25 @@ export default defineType({
       initialValue: false,
     }),
     defineField({
+      name: "reminderEmailEnabled",
+      title: "Send Reminder Email",
+      type: "boolean",
+      description:
+        "Turn on to automatically email everyone with a ticket a reminder before the event.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      initialValue: false,
+    }),
+    defineField({
+      name: "reminderHoursBefore",
+      title: "Reminder — Hours Before Event",
+      type: "number",
+      description:
+        "How many hours before the start time to send the reminder (24 = 1 day before, 48 = 2 days before). This is checked once a day, not continuously, so use 24 or more for a reliable send — a window under ~24 hours can land late or be missed entirely.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled || !parent?.reminderEmailEnabled,
+      initialValue: 24,
+      validation: (Rule) => Rule.integer().min(1),
+    }),
+    defineField({
       name: "formerBoardExcludedKeys",
       title: "Former Board — Free Entry",
       type: "array",

@@ -45,6 +45,9 @@ export interface SanityEvent {
   ticketingEnabled?: boolean;
   cashPaymentEnabled?: boolean;
   boardPlusOneEnabled?: boolean;
+  reminderEmailEnabled?: boolean;
+  /** Hours before `date` to send the reminder email — only meaningful when reminderEmailEnabled is true. */
+  reminderHoursBefore?: number;
   /** Former board roster `_key`s NOT comped for this event — unset/empty means everyone on the roster gets in free. */
   formerBoardExcludedKeys?: string[];
   ticketTypes?: TicketType[];

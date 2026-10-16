@@ -34,6 +34,16 @@ interface TicketCancellationDetails {
   refundedCents?: number;
 }
 
+interface TicketReminderDetails extends TicketQrIds {
+  contactEmail: string;
+  firstName: string;
+  eventName: string;
+  /** Pre-formatted, e.g. "Saturday, October 18 at 7:00 PM" — this module doesn't do date math. */
+  eventDateTime: string;
+  /** Omit, or leave blank, when the event's location is hidden. */
+  eventLocation?: string | null;
+}
+
 const QR_CONTENT_ID = "ticket-qr";
 
 function formatPrice(cents: number): string {
@@ -226,6 +236,32 @@ export async function sendCashOrderConfirmationEmail(
       "change is recommended; we can't guarantee change will be available at",
       "the door. If the event reaches capacity before you arrive, entry is not",
       "guaranteed for cash orders — card purchases are confirmed in advance.",
+      "",
+      "See you there!",
+      "SASA",
+    ],
+    details
+  );
+}
+
+// Reminder emails — triggered by the cron job in
+// src/app/api/cron/send-event-reminders, not by the normal purchase flow.
+export async function sendTicketReminderEmail(
+  details: TicketReminderDetails
+): Promise<boolean> {
+  return sendTicketEmail(
+    "Ticket reminder",
+    details.contactEmail,
+    `Reminder: ${details.eventName} is coming up!`,
+    (hasQr) => [
+      greetingFor(details.firstName),
+      "",
+      `Just a reminder that ${details.eventName} is coming up:`,
+      "",
+      `When: ${details.eventDateTime}`,
+      ...(details.eventLocation ? [`Where: ${details.eventLocation}`] : []),
+      "",
+      doorLine(hasQr),
       "",
       "See you there!",
       "SASA",
