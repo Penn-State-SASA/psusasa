@@ -44,7 +44,12 @@ function buy(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
-  vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
+  vi.mocked(lookupCurrentMember).mockResolvedValue({
+    isMember: false,
+    year: null,
+    firstName: null,
+    lastName: null,
+  });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
   vi.mocked(appendTicketToAirtable).mockResolvedValue({
     inserted: true,
@@ -113,7 +118,12 @@ describe("POST /api/create-ticket-payment-intent — paid orders", () => {
   });
 
   it("tags the PaymentIntent so the webhook and return page can record it", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     await buy({ quantity: 2, psuEmail: "abc123@psu.edu", isPsuStudent: true });
 
     const { metadata } = paymentIntentsCreate.mock.calls[0][0];
@@ -159,7 +169,12 @@ describe("POST /api/create-ticket-payment-intent — free orders", () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(
       makeEvent({ ticketTypes: [{ ...ga, memberPriceCents: 0 }] })
     );
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Senior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Senior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
   });
 
   it("skips Stripe, records the order as paid, and confirms by email", async () => {

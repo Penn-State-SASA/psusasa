@@ -9,13 +9,20 @@ vi.mock("@/lib/airtable", () => ({
   lookupCurrentMember: vi.fn(),
 }));
 
+const buyer = { firstName: "Asha", lastName: "Patel" };
+
 function check(body: Record<string, unknown>) {
-  return POST(jsonRequest("/api/check-member-pricing", body));
+  return POST(jsonRequest("/api/check-member-pricing", { ...buyer, ...body }));
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
+  vi.mocked(lookupCurrentMember).mockResolvedValue({
+    isMember: false,
+    year: null,
+    firstName: null,
+    lastName: null,
+  });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
   muteConsole();
 });
@@ -37,14 +44,24 @@ describe("POST /api/check-member-pricing", () => {
   });
 
   it("reports a member who still has their discount", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     const res = await check({ eventId: "event-1", psuEmail: " abc123@psu.edu " });
     expect(await res.json()).toEqual({ isMember: true, alreadyUsed: false });
     expect(hasUsedMemberPricing).toHaveBeenCalledWith("event-1", "abc123@psu.edu");
   });
 
   it("reports a member who already used their discount at this event", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     vi.mocked(hasUsedMemberPricing).mockResolvedValue(true);
     const res = await check({ eventId: "event-1", psuEmail: "abc123@psu.edu" });
     expect(await res.json()).toEqual({ isMember: true, alreadyUsed: true });
@@ -55,8 +72,28 @@ describe("POST /api/check-member-pricing", () => {
     expect(hasUsedMemberPricing).not.toHaveBeenCalled();
   });
 
+  it("previews as not-a-member when the name doesn't match the Members-table record", async () => {
+    // Stops the preview from promising a discount that a different name on
+    // the real checkout wouldn't get — someone else's email, typed under
+    // the buyer's own name, previews as "not a member" just like checkout.
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Someone",
+      lastName: "Else",
+    });
+    const res = await check({ eventId: "event-1", psuEmail: "abc123@psu.edu" });
+    expect(await res.json()).toEqual({ isMember: false, alreadyUsed: false });
+    expect(hasUsedMemberPricing).not.toHaveBeenCalled();
+  });
+
   it("returns 500 when the past-orders check fails", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: null });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: null,
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     vi.mocked(hasUsedMemberPricing).mockRejectedValue(new Error("Airtable list error"));
     const res = await check({ eventId: "event-1", psuEmail: "abc123@psu.edu" });
     expect(res.status).toBe(500);

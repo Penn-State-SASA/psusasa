@@ -25,13 +25,23 @@ export interface TicketOrderInput {
   psuEmail?: unknown;
   /** False only when the buyer explicitly said they're not a Penn State student — anything else (including omitted, for callers that predate this field) is treated as "is a student." */
   isPsuStudent?: unknown;
+  /** Compared against the Members-table name on file for the PSU email, so a buyer can't claim member pricing using someone else's email. */
+  firstName?: unknown;
+  lastName?: unknown;
+}
+
+export function normalizedName(firstName: unknown, lastName: unknown): string {
+  return `${typeof firstName === "string" ? firstName : ""} ${typeof lastName === "string" ? lastName : ""}`
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 export interface ResolvedTicketOrder {
   event: SanityEvent;
   ticketType: TicketType;
   quantity: number;
-  /** Raw membership-verification result, independent of discount eligibility. */
+  /** Raw membership-verification result (PSU email found in the Members table AND the buyer's name matches the name on file) — independent of discount eligibility. */
   isCurrentMember: boolean;
   /** True if this order's buyer-unit was priced at the member rate. */
   isMember: boolean;
@@ -55,6 +65,8 @@ export async function resolveTicketOrder({
   quantity,
   psuEmail,
   isPsuStudent: isPsuStudentInput,
+  firstName,
+  lastName,
 }: TicketOrderInput): Promise<ResolvedTicketOrder> {
   const isPsuStudent = isPsuStudentInput !== false;
   if (typeof eventId !== "string" || !eventId) {
@@ -96,9 +108,19 @@ export async function resolveTicketOrder({
     );
   }
 
-  const { isMember: isCurrentMember, year: currentMemberYear } = isPsuStudent
+  const memberRecord = isPsuStudent
     ? await lookupCurrentMember(emailInput)
-    : { isMember: false, year: null };
+    : { isMember: false, year: null, firstName: null, lastName: null };
+
+  // A buyer only gets member pricing if the name they typed matches the
+  // name on file for that PSU email — otherwise anyone who knows (or
+  // guesses) a real member's email could claim their discount under a
+  // different name.
+  const isCurrentMember =
+    memberRecord.isMember &&
+    normalizedName(firstName, lastName) ===
+      normalizedName(memberRecord.firstName, memberRecord.lastName);
+  const currentMemberYear = memberRecord.year;
 
   // At most 1 ticket per person, ever, gets the member price for a given
   // event — the buyer's own seat, and only if they haven't already used

@@ -48,7 +48,12 @@ function reserve(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
-  vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
+  vi.mocked(lookupCurrentMember).mockResolvedValue({
+    isMember: false,
+    year: null,
+    firstName: null,
+    lastName: null,
+  });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
   vi.mocked(appendTicketToAirtable).mockResolvedValue({ inserted: true, recordId: RECORD_ID });
   muteConsole();
@@ -104,7 +109,12 @@ describe("POST /api/create-cash-ticket-order", () => {
   });
 
   it("applies the one-seat member discount the same way the card route does", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     const res = await reserve({ psuEmail: "abc123@psu.edu", isPsuStudent: true });
     expect((await res.json()).amountDueCents).toBe(1000 + 1500);
   });
@@ -129,7 +139,12 @@ describe("POST /api/create-cash-ticket-order", () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(
       makeEvent({ ticketTypes: [{ ...ga, memberPriceCents: 0 }] })
     );
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: null });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: null,
+      firstName: "Asha",
+      lastName: "Patel",
+    });
 
     const res = await reserve({ quantity: 1, psuEmail: "abc123@psu.edu", isPsuStudent: true });
 

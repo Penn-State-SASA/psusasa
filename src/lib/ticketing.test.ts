@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveTicketOrder, TicketOrderError, MAX_TICKETS_PER_ORDER } from "@/lib/ticketing";
+import {
+  resolveTicketOrder,
+  TicketOrderError,
+  MAX_TICKETS_PER_ORDER,
+  normalizedName,
+} from "@/lib/ticketing";
 import { sanityFetchSingle } from "../../sanity/lib/client";
 import { hasUsedMemberPricing, lookupCurrentMember, sumCapacityUsed } from "@/lib/airtable";
 import { makeEvent, makeTicketType } from "@/test/factories";
@@ -21,6 +26,11 @@ function order(overrides: Record<string, unknown> = {}) {
     // aren't about it — defaulting to "not a student" keeps the old
     // non-member-priced behavior without requiring a PSU email everywhere.
     isPsuStudent: false,
+    // Matches the default mocked Members-table record below, so tests
+    // that aren't specifically about the name check still get member
+    // pricing when they mock isMember: true.
+    firstName: "Asha",
+    lastName: "Patel",
     ...overrides,
   });
 }
@@ -39,7 +49,12 @@ async function rejection(p: Promise<unknown>): Promise<TicketOrderError> {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(sanityFetchSingle).mockResolvedValue(makeEvent({ ticketTypes: [ga] }));
-  vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: false, year: null });
+  vi.mocked(lookupCurrentMember).mockResolvedValue({
+    isMember: false,
+    year: null,
+    firstName: null,
+    lastName: null,
+  });
   vi.mocked(hasUsedMemberPricing).mockResolvedValue(false);
   vi.mocked(sumCapacityUsed).mockResolvedValue(0);
 });
@@ -109,7 +124,12 @@ describe("resolveTicketOrder — member pricing", () => {
 
   it("gives a member exactly one member-priced seat, however many they buy", async () => {
     // Buying in bulk must not stack the discount: 1 member seat + 3 guests.
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     const r = await order({ quantity: 4, psuEmail: "abc123@psu.edu", isPsuStudent: true });
     expect(r).toMatchObject({
       isCurrentMember: true,
@@ -122,7 +142,12 @@ describe("resolveTicketOrder — member pricing", () => {
   });
 
   it("gives no member seat to a member who already used it on an earlier order", async () => {
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     vi.mocked(hasUsedMemberPricing).mockResolvedValue(true);
     const r = await order({ quantity: 2, psuEmail: "abc123@psu.edu", isPsuStudent: true });
     expect(r).toMatchObject({
@@ -145,9 +170,57 @@ describe("resolveTicketOrder — member pricing", () => {
     vi.mocked(sanityFetchSingle).mockResolvedValue(
       makeEvent({ ticketTypes: [{ ...ga, memberPriceCents: 0 }] })
     );
-    vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: null });
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: null,
+      firstName: "Asha",
+      lastName: "Patel",
+    });
     const r = await order({ psuEmail: "abc123@psu.edu", isPsuStudent: true });
     expect(r.subtotalCents).toBe(0);
+  });
+
+  it("denies member pricing when the buyer's name doesn't match the Members-table record", async () => {
+    // The email alone isn't proof of identity — someone who merely knows
+    // (or guesses) a real member's PSU email shouldn't get their discount.
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Someone",
+      lastName: "Else",
+    });
+    const r = await order({
+      quantity: 2,
+      psuEmail: "abc123@psu.edu",
+      isPsuStudent: true,
+      firstName: "Asha",
+      lastName: "Patel",
+    });
+    expect(r).toMatchObject({
+      isCurrentMember: false,
+      isMember: false,
+      memberYear: null,
+      memberUnits: 0,
+      nonMemberUnits: 2,
+      subtotalCents: 2 * 1500,
+    });
+    expect(hasUsedMemberPricing).not.toHaveBeenCalled();
+  });
+
+  it("matches names case- and whitespace-insensitively", async () => {
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "  ASHA ",
+      lastName: "patel",
+    });
+    const r = await order({
+      psuEmail: "abc123@psu.edu",
+      isPsuStudent: true,
+      firstName: "asha",
+      lastName: "  PATEL",
+    });
+    expect(r.isMember).toBe(true);
   });
 });
 
@@ -243,5 +316,16 @@ describe("resolveTicketOrder — capacity", () => {
     vi.mocked(sumCapacityUsed).mockResolvedValue(100);
     const err = await rejection(order());
     expect(err.message).toBe("This event is sold out.");
+  });
+});
+
+describe("normalizedName", () => {
+  it("joins, trims, collapses whitespace, and lowercases", () => {
+    expect(normalizedName("  Asha ", "  Patel")).toBe("asha patel");
+  });
+
+  it("treats a non-string value as blank", () => {
+    expect(normalizedName(undefined, 42)).toBe("");
+    expect(normalizedName("Asha", undefined)).toBe("asha");
   });
 });

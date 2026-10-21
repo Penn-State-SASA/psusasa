@@ -531,6 +531,11 @@ export default function TicketPurchaseForm({
                     (used to verify student status and check member pricing)
                   </span>
                 </label>
+                <p className="mb-1 text-xs text-sasa-neutral-400">
+                  If you&apos;re a member, this must exactly match the first
+                  and last name you used to register your membership, or
+                  you won&apos;t be charged the member price.
+                </p>
                 <input
                   type="email"
                   value={psuEmail}
@@ -556,7 +561,12 @@ export default function TicketPurchaseForm({
                       const res = await fetch("/api/check-member-pricing", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ eventId, psuEmail: trimmed }),
+                        body: JSON.stringify({
+                          eventId,
+                          psuEmail: trimmed,
+                          firstName: firstName.trim(),
+                          lastName: lastName.trim(),
+                        }),
                       });
                       const data = await res.json();
                       if (res.ok) {

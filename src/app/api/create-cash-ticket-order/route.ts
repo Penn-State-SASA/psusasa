@@ -53,6 +53,8 @@ export async function POST(req: NextRequest) {
         quantity,
         psuEmail,
         isPsuStudent,
+        firstName: trimmedFirst,
+        lastName: trimmedLast,
       });
     } catch (err) {
       if (err instanceof TicketOrderError) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasUsedMemberPricing, lookupCurrentMember } from "@/lib/airtable";
+import { normalizedName } from "@/lib/ticketing";
 
 // Read-only preview check the purchase form calls on PSU-email blur, so
 // step 1 can show an accurate price before the buyer clicks Continue —
@@ -7,7 +8,7 @@ import { hasUsedMemberPricing, lookupCurrentMember } from "@/lib/airtable";
 // regardless of what this returns, so there's no trust issue in exposing it.
 export async function POST(req: NextRequest) {
   try {
-    const { eventId, psuEmail } = await req.json();
+    const { eventId, psuEmail, firstName, lastName } = await req.json();
 
     if (typeof eventId !== "string" || !eventId) {
       return NextResponse.json({ error: "Missing event." }, { status: 400 });
@@ -18,7 +19,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ isMember: false, alreadyUsed: false });
     }
 
-    const { isMember } = await lookupCurrentMember(email);
+    const record = await lookupCurrentMember(email);
+    // Mirrors resolveTicketOrder's own check — a name that doesn't match
+    // the Members-table record previews as "not a member" too, so this
+    // preview never promises a discount the real purchase won't honor.
+    const isMember =
+      record.isMember &&
+      normalizedName(firstName, lastName) ===
+        normalizedName(record.firstName, record.lastName);
     const alreadyUsed = isMember ? await hasUsedMemberPricing(eventId, email) : false;
 
     return NextResponse.json({ isMember, alreadyUsed });
