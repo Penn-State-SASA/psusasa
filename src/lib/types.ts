@@ -25,6 +25,8 @@ export interface TicketType {
   name: string;
   memberPriceCents: number;
   nonMemberPriceCents: number;
+  /** Price for buyers who aren't Penn State students at all — unset falls back to nonMemberPriceCents. */
+  nonStudentPriceCents?: number;
   salesOpen: boolean;
 }
 

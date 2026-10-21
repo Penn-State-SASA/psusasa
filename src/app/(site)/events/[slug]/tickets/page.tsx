@@ -73,6 +73,7 @@ export default async function EventTicketsPage({ params }: TicketsPageProps) {
     name: t.name,
     memberPriceCents: t.memberPriceCents,
     nonMemberPriceCents: t.nonMemberPriceCents,
+    nonStudentPriceCents: t.nonStudentPriceCents,
     salesOpen: t.salesOpen !== false,
   }));
 
