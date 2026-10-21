@@ -79,6 +79,7 @@ export default function TicketPurchaseForm({
   const [memberPricingCheck, setMemberPricingCheck] = useState<{
     isMember: boolean;
     alreadyUsed: boolean;
+    nameMismatch: boolean;
   } | null>(null);
   const [checkingMemberPricing, setCheckingMemberPricing] = useState(false);
   const [ticketTypeKey, setTicketTypeKey] = useState(
@@ -573,6 +574,7 @@ export default function TicketPurchaseForm({
                         setMemberPricingCheck({
                           isMember: !!data.isMember,
                           alreadyUsed: !!data.alreadyUsed,
+                          nameMismatch: !!data.nameMismatch,
                         });
                       }
                     } catch {
@@ -610,7 +612,26 @@ export default function TicketPurchaseForm({
                   )}
                 {!step1Errors.psuEmail &&
                   memberPricingCheck &&
-                  !memberPricingCheck.isMember && (
+                  !memberPricingCheck.isMember &&
+                  memberPricingCheck.nameMismatch && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      We found a membership under this email, but the name
+                      above doesn&apos;t match our records — double-check
+                      the spelling, or email{" "}
+                      <a
+                        href="mailto:exec.psusasa@gmail.com"
+                        className="underline"
+                      >
+                        exec.psusasa@gmail.com
+                      </a>{" "}
+                      if you think this is a mistake. Until then,
+                      you&apos;ll be charged the non-member price.
+                    </p>
+                  )}
+                {!step1Errors.psuEmail &&
+                  memberPricingCheck &&
+                  !memberPricingCheck.isMember &&
+                  !memberPricingCheck.nameMismatch && (
                     <p className="mt-1 text-xs text-amber-600">
                       We couldn&apos;t find a membership under this email —
                       you&apos;ll be charged the non-member price. If you

@@ -39,7 +39,13 @@ describe("POST /api/check-member-pricing", () => {
 
   it("answers not-a-member for a blank email without any lookups", async () => {
     const res = await check({ eventId: "event-1", psuEmail: "  " });
-    expect(await res.json()).toEqual({ isMember: false, alreadyUsed: false });
+    expect(await res.json()).toEqual({ isMember: false, alreadyUsed: false, nameMismatch: false });
+    expect(lookupCurrentMember).not.toHaveBeenCalled();
+  });
+
+  it("treats a missing psuEmail the same as blank", async () => {
+    const res = await check({ eventId: "event-1" });
+    expect(await res.json()).toEqual({ isMember: false, alreadyUsed: false, nameMismatch: false });
     expect(lookupCurrentMember).not.toHaveBeenCalled();
   });
 
@@ -51,7 +57,11 @@ describe("POST /api/check-member-pricing", () => {
       lastName: "Patel",
     });
     const res = await check({ eventId: "event-1", psuEmail: " abc123@psu.edu " });
-    expect(await res.json()).toEqual({ isMember: true, alreadyUsed: false });
+    expect(await res.json()).toEqual({
+      isMember: true,
+      alreadyUsed: false,
+      nameMismatch: false,
+    });
     expect(hasUsedMemberPricing).toHaveBeenCalledWith("event-1", "abc123@psu.edu");
   });
 
@@ -64,7 +74,7 @@ describe("POST /api/check-member-pricing", () => {
     });
     vi.mocked(hasUsedMemberPricing).mockResolvedValue(true);
     const res = await check({ eventId: "event-1", psuEmail: "abc123@psu.edu" });
-    expect(await res.json()).toEqual({ isMember: true, alreadyUsed: true });
+    expect(await res.json()).toEqual({ isMember: true, alreadyUsed: true, nameMismatch: false });
   });
 
   it("doesn't check past orders for a non-member", async () => {
@@ -72,10 +82,9 @@ describe("POST /api/check-member-pricing", () => {
     expect(hasUsedMemberPricing).not.toHaveBeenCalled();
   });
 
-  it("previews as not-a-member when the name doesn't match the Members-table record", async () => {
-    // Stops the preview from promising a discount that a different name on
-    // the real checkout wouldn't get — someone else's email, typed under
-    // the buyer's own name, previews as "not a member" just like checkout.
+  it("flags a name mismatch distinctly from no membership at all", async () => {
+    // So the form can tell the buyer "wrong name" instead of the
+    // misleading "no membership under this email" when one actually exists.
     vi.mocked(lookupCurrentMember).mockResolvedValue({
       isMember: true,
       year: "Junior",
@@ -83,7 +92,11 @@ describe("POST /api/check-member-pricing", () => {
       lastName: "Else",
     });
     const res = await check({ eventId: "event-1", psuEmail: "abc123@psu.edu" });
-    expect(await res.json()).toEqual({ isMember: false, alreadyUsed: false });
+    expect(await res.json()).toEqual({
+      isMember: false,
+      alreadyUsed: false,
+      nameMismatch: true,
+    });
     expect(hasUsedMemberPricing).not.toHaveBeenCalled();
   });
 

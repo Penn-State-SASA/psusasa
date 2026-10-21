@@ -16,20 +16,24 @@ export async function POST(req: NextRequest) {
 
     const email = typeof psuEmail === "string" ? psuEmail.trim() : "";
     if (!email) {
-      return NextResponse.json({ isMember: false, alreadyUsed: false });
+      return NextResponse.json({ isMember: false, alreadyUsed: false, nameMismatch: false });
     }
 
     const record = await lookupCurrentMember(email);
     // Mirrors resolveTicketOrder's own check — a name that doesn't match
     // the Members-table record previews as "not a member" too, so this
     // preview never promises a discount the real purchase won't honor.
-    const isMember =
+    // nameMismatch distinguishes "no membership under this email" from
+    // "found a membership, but the name doesn't match" so the form can
+    // tell the buyer which one actually happened.
+    const nameMismatch =
       record.isMember &&
-      normalizedName(firstName, lastName) ===
+      normalizedName(firstName, lastName) !==
         normalizedName(record.firstName, record.lastName);
+    const isMember = record.isMember && !nameMismatch;
     const alreadyUsed = isMember ? await hasUsedMemberPricing(eventId, email) : false;
 
-    return NextResponse.json({ isMember, alreadyUsed });
+    return NextResponse.json({ isMember, alreadyUsed, nameMismatch });
   } catch (err) {
     console.error("Member pricing check error:", err);
     return NextResponse.json({ error: "Failed to check pricing." }, { status: 500 });
