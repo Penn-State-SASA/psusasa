@@ -1,6 +1,7 @@
 import { sanityFetchSingle } from "../../sanity/lib/client";
 import { eventByIdQuery } from "../../sanity/lib/queries";
 import type { SanityEvent, TicketType } from "@/lib/types";
+import { PSU_MEMBER_EMAIL_RE } from "@/lib/email";
 import {
   hasUsedMemberPricing,
   lookupCurrentMember,
@@ -22,13 +23,25 @@ export interface TicketOrderInput {
   ticketTypeKey: unknown;
   quantity: unknown;
   psuEmail?: unknown;
+  /** False only when the buyer explicitly said they're not a Penn State student — anything else (including omitted, for callers that predate this field) is treated as "is a student." */
+  isPsuStudent?: unknown;
+  /** Compared against the Members-table name on file for the PSU email, so a buyer can't claim member pricing using someone else's email. */
+  firstName?: unknown;
+  lastName?: unknown;
+}
+
+export function normalizedName(firstName: unknown, lastName: unknown): string {
+  return `${typeof firstName === "string" ? firstName : ""} ${typeof lastName === "string" ? lastName : ""}`
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 export interface ResolvedTicketOrder {
   event: SanityEvent;
   ticketType: TicketType;
   quantity: number;
-  /** Raw membership-verification result, independent of discount eligibility. */
+  /** Raw membership-verification result (PSU email found in the Members table AND the buyer's name matches the name on file) — independent of discount eligibility. */
   isCurrentMember: boolean;
   /** True if this order's buyer-unit was priced at the member rate. */
   isMember: boolean;
@@ -38,6 +51,8 @@ export interface ResolvedTicketOrder {
   memberUnits: number;
   nonMemberUnits: number;
   subtotalCents: number;
+  /** False only when the buyer said they're not a Penn State student. */
+  isPsuStudent: boolean;
 }
 
 // Shared by both the card and cash purchase routes: validates the request,
@@ -49,7 +64,11 @@ export async function resolveTicketOrder({
   ticketTypeKey,
   quantity,
   psuEmail,
+  isPsuStudent: isPsuStudentInput,
+  firstName,
+  lastName,
 }: TicketOrderInput): Promise<ResolvedTicketOrder> {
+  const isPsuStudent = isPsuStudentInput !== false;
   if (typeof eventId !== "string" || !eventId) {
     throw new TicketOrderError("Missing event.");
   }
@@ -79,9 +98,29 @@ export async function resolveTicketOrder({
   }
 
   const emailInput = typeof psuEmail === "string" ? psuEmail.trim() : "";
-  const { isMember: isCurrentMember, year: currentMemberYear } = emailInput
+
+  // Mandatory and format-checked server-side, not just client-side — a
+  // buyer claiming to be a Penn State student can't bypass this by simply
+  // leaving the PSU email field blank.
+  if (isPsuStudent && !PSU_MEMBER_EMAIL_RE.test(emailInput)) {
+    throw new TicketOrderError(
+      "A valid Penn State email (ending in @psu.edu) is required for Penn State students."
+    );
+  }
+
+  const memberRecord = isPsuStudent
     ? await lookupCurrentMember(emailInput)
-    : { isMember: false, year: null };
+    : { isMember: false, year: null, firstName: null, lastName: null };
+
+  // A buyer only gets member pricing if the name they typed matches the
+  // name on file for that PSU email — otherwise anyone who knows (or
+  // guesses) a real member's email could claim their discount under a
+  // different name.
+  const isCurrentMember =
+    memberRecord.isMember &&
+    normalizedName(firstName, lastName) ===
+      normalizedName(memberRecord.firstName, memberRecord.lastName);
+  const currentMemberYear = memberRecord.year;
 
   // At most 1 ticket per person, ever, gets the member price for a given
   // event — the buyer's own seat, and only if they haven't already used
@@ -93,9 +132,15 @@ export async function resolveTicketOrder({
     : false;
   const memberUnits = isCurrentMember && !alreadyUsedMemberPricing ? 1 : 0;
   const nonMemberUnits = qty - memberUnits;
+  // Non-students skip the member/non-member distinction entirely — every
+  // unit they buy is priced the same, falling back to the non-member price
+  // for any event where staff haven't set a non-student price yet.
+  const nonMemberUnitPriceCents = isPsuStudent
+    ? ticketType.nonMemberPriceCents
+    : (ticketType.nonStudentPriceCents ?? ticketType.nonMemberPriceCents);
   const subtotalCents =
     memberUnits * ticketType.memberPriceCents +
-    nonMemberUnits * ticketType.nonMemberPriceCents;
+    nonMemberUnits * nonMemberUnitPriceCents;
 
   if (typeof event.capacity === "number") {
     const used = await sumCapacityUsed(event._id);
@@ -119,5 +164,6 @@ export async function resolveTicketOrder({
     memberUnits,
     nonMemberUnits,
     subtotalCents,
+    isPsuStudent,
   };
 }

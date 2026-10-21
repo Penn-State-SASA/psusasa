@@ -78,6 +78,7 @@ export async function POST(
         contactEmail: "",
         psuEmail: "",
         isMember: false,
+        isPsuStudent: true,
         memberYear: null,
         eventId: event._id,
         eventName: event.title.slice(0, 500),
