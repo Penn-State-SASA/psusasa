@@ -1,6 +1,7 @@
 import { sanityFetchSingle } from "../../sanity/lib/client";
 import { eventByIdQuery } from "../../sanity/lib/queries";
 import type { SanityEvent, TicketType } from "@/lib/types";
+import { PSU_MEMBER_EMAIL_RE } from "@/lib/email";
 import {
   hasUsedMemberPricing,
   lookupCurrentMember,
@@ -22,6 +23,8 @@ export interface TicketOrderInput {
   ticketTypeKey: unknown;
   quantity: unknown;
   psuEmail?: unknown;
+  /** False only when the buyer explicitly said they're not a Penn State student — anything else (including omitted, for callers that predate this field) is treated as "is a student." */
+  isPsuStudent?: unknown;
 }
 
 export interface ResolvedTicketOrder {
@@ -38,6 +41,8 @@ export interface ResolvedTicketOrder {
   memberUnits: number;
   nonMemberUnits: number;
   subtotalCents: number;
+  /** False only when the buyer said they're not a Penn State student. */
+  isPsuStudent: boolean;
 }
 
 // Shared by both the card and cash purchase routes: validates the request,
@@ -49,7 +54,9 @@ export async function resolveTicketOrder({
   ticketTypeKey,
   quantity,
   psuEmail,
+  isPsuStudent: isPsuStudentInput,
 }: TicketOrderInput): Promise<ResolvedTicketOrder> {
+  const isPsuStudent = isPsuStudentInput !== false;
   if (typeof eventId !== "string" || !eventId) {
     throw new TicketOrderError("Missing event.");
   }
@@ -79,7 +86,17 @@ export async function resolveTicketOrder({
   }
 
   const emailInput = typeof psuEmail === "string" ? psuEmail.trim() : "";
-  const { isMember: isCurrentMember, year: currentMemberYear } = emailInput
+
+  // Mandatory and format-checked server-side, not just client-side — a
+  // buyer claiming to be a Penn State student can't bypass this by simply
+  // leaving the PSU email field blank.
+  if (isPsuStudent && !PSU_MEMBER_EMAIL_RE.test(emailInput)) {
+    throw new TicketOrderError(
+      "A valid Penn State email (ending in @psu.edu) is required for Penn State students."
+    );
+  }
+
+  const { isMember: isCurrentMember, year: currentMemberYear } = isPsuStudent
     ? await lookupCurrentMember(emailInput)
     : { isMember: false, year: null };
 
@@ -93,9 +110,15 @@ export async function resolveTicketOrder({
     : false;
   const memberUnits = isCurrentMember && !alreadyUsedMemberPricing ? 1 : 0;
   const nonMemberUnits = qty - memberUnits;
+  // Non-students skip the member/non-member distinction entirely — every
+  // unit they buy is priced the same, falling back to the non-member price
+  // for any event where staff haven't set a non-student price yet.
+  const nonMemberUnitPriceCents = isPsuStudent
+    ? ticketType.nonMemberPriceCents
+    : (ticketType.nonStudentPriceCents ?? ticketType.nonMemberPriceCents);
   const subtotalCents =
     memberUnits * ticketType.memberPriceCents +
-    nonMemberUnits * ticketType.nonMemberPriceCents;
+    nonMemberUnits * nonMemberUnitPriceCents;
 
   if (typeof event.capacity === "number") {
     const used = await sumCapacityUsed(event._id);
@@ -119,5 +142,6 @@ export async function resolveTicketOrder({
     memberUnits,
     nonMemberUnits,
     subtotalCents,
+    isPsuStudent,
   };
 }

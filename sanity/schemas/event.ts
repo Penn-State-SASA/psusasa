@@ -96,7 +96,7 @@ export default defineType({
       title: "Ticket Types",
       type: "array",
       description:
-        "One entry per ticket tier (e.g. General Admission, VIP). Each has its own member and non-member price.",
+        "One entry per ticket tier (e.g. General Admission, VIP). Each has its own member, non-member, and non-Penn-State-student price.",
       hidden: ({ parent }) => !parent?.ticketingEnabled,
       of: [
         {
@@ -125,6 +125,14 @@ export default defineType({
               validation: (Rule) => Rule.required().integer().min(0),
             },
             {
+              name: "nonStudentPriceCents",
+              title: "Non-Penn-State-Student Price (in cents)",
+              description:
+                "Price for people who are not Penn State students at all (checked via PSU email on the purchase form). e.g. 1500 = $15.00. Leave blank to use the Non-Member price for non-students too.",
+              type: "number",
+              validation: (Rule) => Rule.integer().min(0),
+            },
+            {
               name: "salesOpen",
               title: "Sales Open",
               description:
@@ -138,13 +146,14 @@ export default defineType({
               title: "name",
               memberPriceCents: "memberPriceCents",
               nonMemberPriceCents: "nonMemberPriceCents",
+              nonStudentPriceCents: "nonStudentPriceCents",
             },
-            prepare({ title, memberPriceCents, nonMemberPriceCents }) {
+            prepare({ title, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents }) {
               const fmt = (c: number) =>
                 typeof c === "number" ? `$${(c / 100).toFixed(2)}` : "—";
               return {
                 title: title || "Ticket Type",
-                subtitle: `Member ${fmt(memberPriceCents)} / Non-member ${fmt(nonMemberPriceCents)}`,
+                subtitle: `Member ${fmt(memberPriceCents)} / Non-member ${fmt(nonMemberPriceCents)} / Non-student ${fmt(nonStudentPriceCents)}`,
               };
             },
           },

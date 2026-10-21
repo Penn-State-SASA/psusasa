@@ -176,6 +176,8 @@ export interface TicketOrderMetadata {
   contactEmail: string;
   psuEmail: string;
   isMember: boolean;
+  /** False only when the buyer said they're not a Penn State student. */
+  isPsuStudent: boolean;
   /** The buyer's Members-table "Year", when this order got member pricing — null otherwise. */
   memberYear: string | null;
   eventId: string;
@@ -216,6 +218,7 @@ export async function appendTicketToAirtable(
     "Contact Email": order.contactEmail,
     "PSU Email": order.psuEmail,
     "Is Member": order.isMember,
+    "Is PSU Student": order.isPsuStudent,
     "Member Year": order.memberYear ?? "",
     "Event ID": order.eventId,
     "Event Name": order.eventName,

@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       lastName,
       contactEmail,
       psuEmail,
+      isPsuStudent,
     } = body;
 
     const trimmedFirst = String(firstName ?? "").trim();
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
         ticketTypeKey,
         quantity,
         psuEmail,
+        isPsuStudent,
       });
     } catch (err) {
       if (err instanceof TicketOrderError) {
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
           contactEmail: trimmedEmail.slice(0, 500),
           psuEmail: String(psuEmail ?? "").trim().slice(0, 500),
           isMember: order.isMember,
+          isPsuStudent: order.isPsuStudent,
           memberYear: order.memberYear,
           eventId: order.event._id,
           eventName: order.event.title.slice(0, 500),
@@ -126,6 +129,7 @@ export async function POST(req: NextRequest) {
       contactEmail: trimmedEmail.slice(0, 500),
       psuEmail: String(psuEmail ?? "").trim().slice(0, 500),
       isMember: String(order.isMember),
+      isPsuStudent: String(order.isPsuStudent),
       memberYear: order.memberYear ?? "",
       memberUnits: String(order.memberUnits),
       nonMemberUnits: String(order.nonMemberUnits),

@@ -31,6 +31,10 @@ const buyer = {
   lastName: "Patel",
   contactEmail: "asha@example.com",
   psuEmail: "",
+  // Most of these tests predate the PSU-student toggle and aren't about
+  // it — defaulting to "not a student" keeps the old non-member-priced
+  // behavior without requiring a PSU email on every case.
+  isPsuStudent: false,
 };
 
 function buy(overrides: Record<string, unknown> = {}) {
@@ -110,7 +114,7 @@ describe("POST /api/create-ticket-payment-intent — paid orders", () => {
 
   it("tags the PaymentIntent so the webhook and return page can record it", async () => {
     vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
-    await buy({ quantity: 2, psuEmail: "abc123@psu.edu" });
+    await buy({ quantity: 2, psuEmail: "abc123@psu.edu", isPsuStudent: true });
 
     const { metadata } = paymentIntentsCreate.mock.calls[0][0];
     expect(metadata).toMatchObject({
@@ -159,7 +163,7 @@ describe("POST /api/create-ticket-payment-intent — free orders", () => {
   });
 
   it("skips Stripe, records the order as paid, and confirms by email", async () => {
-    const res = await buy({ psuEmail: "abc123@psu.edu" });
+    const res = await buy({ psuEmail: "abc123@psu.edu", isPsuStudent: true });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
@@ -184,7 +188,7 @@ describe("POST /api/create-ticket-payment-intent — free orders", () => {
   });
 
   it("still charges when guests push a member's free ticket above $0", async () => {
-    const res = await buy({ psuEmail: "abc123@psu.edu", quantity: 2 });
+    const res = await buy({ psuEmail: "abc123@psu.edu", isPsuStudent: true, quantity: 2 });
     expect((await res.json()).subtotalCents).toBe(1500);
     expect(paymentIntentsCreate).toHaveBeenCalledTimes(1);
   });

@@ -10,7 +10,12 @@ import {
 } from "@stripe/react-stripe-js";
 import { computeCardFee } from "@/lib/fees";
 import { breakdownLabel } from "@/lib/ticketLabels";
-import { EMAIL_RE, isPsuEmail, PSU_CONTACT_EMAIL_ERROR } from "@/lib/email";
+import {
+  EMAIL_RE,
+  isPsuEmail,
+  PSU_CONTACT_EMAIL_ERROR,
+  PSU_MEMBER_EMAIL_RE,
+} from "@/lib/email";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
@@ -20,11 +25,6 @@ const stripePromise = loadStripe(
 // value actually enforced server-side; this only bounds the input client-side.
 const MAX_TICKETS_PER_ORDER = 10;
 
-// A member-pricing lookup needs the bare university domain — unlike
-// isPsuEmail() in @/lib/email, which is a suffix test that also matches
-// subdomains.
-const PSU_MEMBER_EMAIL_RE = /^[^\s@]+@psu\.edu$/i;
-
 type PaymentMethod = "card" | "cash";
 type Step = 1 | 2;
 
@@ -33,6 +33,8 @@ export interface TicketTypeOption {
   name: string;
   memberPriceCents: number;
   nonMemberPriceCents: number;
+  /** Unset falls back to nonMemberPriceCents. */
+  nonStudentPriceCents?: number;
   salesOpen: boolean;
 }
 
@@ -69,6 +71,10 @@ export default function TicketPurchaseForm({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  // Defaults to "student" so a PSU student who doesn't notice the toggle
+  // still gets the PSU-email requirement, instead of silently sliding into
+  // the non-student price.
+  const [isPsuStudent, setIsPsuStudent] = useState(true);
   const [psuEmail, setPsuEmail] = useState("");
   const [memberPricingCheck, setMemberPricingCheck] = useState<{
     isMember: boolean;
@@ -128,17 +134,27 @@ export default function TicketPurchaseForm({
   // over the guess, since it also knows whether this email already used its
   // one member-priced ticket for this event, which the format check can't.
   const psuEmailLooksLikeMember = PSU_MEMBER_EMAIL_RE.test(psuEmail.trim());
-  const eligibleForMemberPrice = memberPricingCheck
-    ? memberPricingCheck.isMember && !memberPricingCheck.alreadyUsed
-    : psuEmailLooksLikeMember;
+  // Membership is only possible for students — someone who said they're not
+  // a Penn State student never gets the member-price check at all.
+  const eligibleForMemberPrice =
+    isPsuStudent &&
+    (memberPricingCheck
+      ? memberPricingCheck.isMember && !memberPricingCheck.alreadyUsed
+      : psuEmailLooksLikeMember);
+  // What a non-member unit costs — the non-student price once the buyer
+  // says they're not a Penn State student, falling back to the non-member
+  // price for any ticket type where staff haven't set one.
+  const effectiveNonMemberPriceCents = selectedType
+    ? isPsuStudent
+      ? selectedType.nonMemberPriceCents
+      : (selectedType.nonStudentPriceCents ?? selectedType.nonMemberPriceCents)
+    : 0;
   const estimatedOwnUnitCents = selectedType
     ? eligibleForMemberPrice
       ? selectedType.memberPriceCents
-      : selectedType.nonMemberPriceCents
+      : effectiveNonMemberPriceCents
     : 0;
-  const estimatedAdditionalCents = selectedType
-    ? selectedType.nonMemberPriceCents * additionalQuantity
-    : 0;
+  const estimatedAdditionalCents = effectiveNonMemberPriceCents * additionalQuantity;
   const estimatedSubtotalCents = estimatedOwnUnitCents + estimatedAdditionalCents;
   // Free orders never touch Stripe, so there's never a fee — regardless of
   // which payment method is selected.
@@ -165,12 +181,17 @@ export default function TicketPurchaseForm({
       next.contactEmail = PSU_CONTACT_EMAIL_ERROR;
     }
 
-    // Optional — leaving it blank just means non-member pricing. But a
-    // half-typed address would silently cost the buyer money, so it blocks.
+    // Mandatory and format-checked for a Penn State student — so a student
+    // can't accidentally (or deliberately) skip it to land in the
+    // non-student price. Not shown/validated at all once the buyer says
+    // they're not a student.
     const trimmedPsu = psuEmail.trim();
-    if (trimmedPsu && !PSU_MEMBER_EMAIL_RE.test(trimmedPsu)) {
-      next.psuEmail =
-        "That doesn't look like a @psu.edu address — fix it, or clear the field to pay the non-member price.";
+    if (isPsuStudent) {
+      if (!trimmedPsu) {
+        next.psuEmail = "A Penn State email (ending in @psu.edu) is required.";
+      } else if (!PSU_MEMBER_EMAIL_RE.test(trimmedPsu)) {
+        next.psuEmail = "That doesn't look like a @psu.edu address.";
+      }
     }
 
     if (!ticketTypeKey) next.ticketTypeKey = "Please select a ticket type.";
@@ -186,6 +207,7 @@ export default function TicketPurchaseForm({
     firstName,
     lastName,
     contactEmail,
+    isPsuStudent,
     psuEmail,
     ticketTypeKey,
     additionalQuantity,
@@ -244,6 +266,7 @@ export default function TicketPurchaseForm({
       lastName: lastName.trim(),
       contactEmail: contactEmail.trim(),
       psuEmail: psuEmail.trim(),
+      isPsuStudent,
     };
 
     try {
@@ -436,10 +459,76 @@ export default function TicketPurchaseForm({
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-sasa-red-900 mb-2">
+                  Are you a Penn State student?{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-2">
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-all ${
+                      isPsuStudent
+                        ? "border-sasa-red-900 bg-sasa-red-900/5 shadow-sm"
+                        : "border-gray-200 hover:border-sasa-red-900/30 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="isPsuStudent"
+                      checked={isPsuStudent}
+                      onChange={() => setIsPsuStudent(true)}
+                      className="sr-only"
+                    />
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                        isPsuStudent ? "border-sasa-red-900 bg-sasa-red-900" : "border-gray-300"
+                      }`}
+                    >
+                      {isPsuStudent && <span className="h-2 w-2 rounded-full bg-white" />}
+                    </span>
+                    <span className="text-sm font-semibold text-sasa-red-900">
+                      I am a Penn State student
+                    </span>
+                  </label>
+                  <label
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-all ${
+                      !isPsuStudent
+                        ? "border-sasa-red-900 bg-sasa-red-900/5 shadow-sm"
+                        : "border-gray-200 hover:border-sasa-red-900/30 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="isPsuStudent"
+                      checked={!isPsuStudent}
+                      onChange={() => {
+                        setIsPsuStudent(false);
+                        // No PSU email to validate/preview once this is
+                        // chosen — clear anything left over from before.
+                        setPsuEmail("");
+                        setMemberPricingCheck(null);
+                      }}
+                      className="sr-only"
+                    />
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                        !isPsuStudent ? "border-sasa-red-900 bg-sasa-red-900" : "border-gray-300"
+                      }`}
+                    >
+                      {!isPsuStudent && <span className="h-2 w-2 rounded-full bg-white" />}
+                    </span>
+                    <span className="text-sm font-semibold text-sasa-red-900">
+                      I am not a Penn State student
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {isPsuStudent && (
+              <div>
                 <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                  PSU Email{" "}
+                  PSU Email <span className="text-red-500">*</span>{" "}
                   <span className="font-normal text-sasa-neutral-400">
-                    (optional — for member pricing on your own ticket)
+                    (used to check member pricing)
                   </span>
                 </label>
                 <input
@@ -526,6 +615,7 @@ export default function TicketPurchaseForm({
                     </p>
                   )}
               </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-sasa-red-900 mb-2">
@@ -573,14 +663,25 @@ export default function TicketPurchaseForm({
                             )}
                           </span>
                           <span className="mt-0.5 block text-xs text-sasa-neutral-500">
-                            Members{" "}
-                            <span className="font-semibold text-sasa-forest">
-                              {formatPrice(t.memberPriceCents)}
-                            </span>{" "}
-                            · Non-members{" "}
-                            <span className="font-semibold text-sasa-neutral-500">
-                              {formatPrice(t.nonMemberPriceCents)}
-                            </span>
+                            {isPsuStudent ? (
+                              <>
+                                Members{" "}
+                                <span className="font-semibold text-sasa-forest">
+                                  {formatPrice(t.memberPriceCents)}
+                                </span>{" "}
+                                · Non-members{" "}
+                                <span className="font-semibold text-sasa-neutral-500">
+                                  {formatPrice(t.nonMemberPriceCents)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                Non-Penn-State students{" "}
+                                <span className="font-semibold text-sasa-neutral-500">
+                                  {formatPrice(t.nonStudentPriceCents ?? t.nonMemberPriceCents)}
+                                </span>
+                              </>
+                            )}
                           </span>
                         </span>
                       </label>
@@ -608,10 +709,10 @@ export default function TicketPurchaseForm({
               </h2>
             </div>
             <p className="mb-3 text-xs text-sasa-neutral-500">
-              Buying for friends too? Additional tickets are charged the
-              non-member rate
+              Buying for friends too? Additional tickets are charged the{" "}
+              {isPsuStudent ? "non-member" : "non-Penn-State"} rate
               {selectedType &&
-                ` (${formatPrice(selectedType.nonMemberPriceCents)} each)`}{" "}
+                ` (${formatPrice(effectiveNonMemberPriceCents)} each)`}{" "}
               — no info needed from them, they&apos;re on the same order as you.
             </p>
             <div className="flex items-center gap-3">
@@ -788,7 +889,12 @@ export default function TicketPurchaseForm({
               <div className="flex items-baseline justify-between text-sm">
                 <span className="text-sasa-neutral-500">
                   Your ticket (
-                  {eligibleForMemberPrice ? "member" : "non-member"} price)
+                  {eligibleForMemberPrice
+                    ? "member"
+                    : isPsuStudent
+                      ? "non-member"
+                      : "non-Penn-State"}{" "}
+                  price)
                 </span>
                 <span>{formatPrice(estimatedOwnUnitCents)}</span>
               </div>
@@ -796,7 +902,8 @@ export default function TicketPurchaseForm({
                 <div className="mt-1 flex items-baseline justify-between text-sm text-sasa-neutral-500">
                   <span>
                     {additionalQuantity} additional ticket
-                    {additionalQuantity === 1 ? "" : "s"} (non-member price)
+                    {additionalQuantity === 1 ? "" : "s"} (
+                    {isPsuStudent ? "non-member" : "non-Penn-State"} price)
                   </span>
                   <span>{formatPrice(estimatedAdditionalCents)}</span>
                 </div>
@@ -850,7 +957,8 @@ export default function TicketPurchaseForm({
           <p className="mb-4 text-sm text-sasa-neutral-500">
             {breakdownLabel(
               freeConfirmation.memberUnits,
-              freeConfirmation.nonMemberUnits
+              freeConfirmation.nonMemberUnits,
+              isPsuStudent
             )}{" "}
             — no payment needed. A confirmation email is on its way.
           </p>
@@ -884,7 +992,7 @@ export default function TicketPurchaseForm({
               </div>
               <div className="flex items-baseline justify-between text-sm">
                 <span className="text-sasa-neutral-500">
-                  {breakdownLabel(cardTotals.memberUnits, cardTotals.nonMemberUnits)}
+                  {breakdownLabel(cardTotals.memberUnits, cardTotals.nonMemberUnits, isPsuStudent)}
                 </span>
                 <span>{formatPrice(cardTotals.subtotalCents)}</span>
               </div>
@@ -959,7 +1067,8 @@ export default function TicketPurchaseForm({
               <p className="text-sm text-sasa-neutral-500">
                 {breakdownLabel(
                   cashConfirmation.memberUnits,
-                  cashConfirmation.nonMemberUnits
+                  cashConfirmation.nonMemberUnits,
+                  isPsuStudent
                 )}{" "}
                 — bring{" "}
                 <span className="font-semibold text-sasa-red-900">

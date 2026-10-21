@@ -35,6 +35,10 @@ const buyer = {
   lastName: "Patel",
   contactEmail: "asha@example.com",
   psuEmail: "",
+  // Most of these tests predate the PSU-student toggle and aren't about
+  // it — defaulting to "not a student" keeps the old non-member-priced
+  // behavior without requiring a PSU email on every case.
+  isPsuStudent: false,
 };
 
 function reserve(overrides: Record<string, unknown> = {}) {
@@ -101,7 +105,7 @@ describe("POST /api/create-cash-ticket-order", () => {
 
   it("applies the one-seat member discount the same way the card route does", async () => {
     vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: "Junior" });
-    const res = await reserve({ psuEmail: "abc123@psu.edu" });
+    const res = await reserve({ psuEmail: "abc123@psu.edu", isPsuStudent: true });
     expect((await res.json()).amountDueCents).toBe(1000 + 1500);
   });
 
@@ -127,7 +131,7 @@ describe("POST /api/create-cash-ticket-order", () => {
     );
     vi.mocked(lookupCurrentMember).mockResolvedValue({ isMember: true, year: null });
 
-    const res = await reserve({ quantity: 1, psuEmail: "abc123@psu.edu" });
+    const res = await reserve({ quantity: 1, psuEmail: "abc123@psu.edu", isPsuStudent: true });
 
     expect(await res.json()).toMatchObject({ free: true, ticketQr: QR_DATA_URL });
     expect(appendTicketToAirtable).toHaveBeenCalledWith(
