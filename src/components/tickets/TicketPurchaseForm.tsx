@@ -528,7 +528,7 @@ export default function TicketPurchaseForm({
                 <label className="block text-sm font-medium text-sasa-red-900 mb-1">
                   PSU Email <span className="text-red-500">*</span>{" "}
                   <span className="font-normal text-sasa-neutral-400">
-                    (used to check member pricing)
+                    (used to verify student status and check member pricing)
                   </span>
                 </label>
                 <input
