@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   sendCashOrderConfirmationEmail,
+  sendTicketCancellationEmail,
   sendTicketConfirmationEmail,
   sendTicketReminderEmail,
 } from "@/lib/ticketEmail";
@@ -229,6 +230,56 @@ describe("sendTicketReminderEmail", () => {
   it("reports failure when Resend answers with an error", async () => {
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
     expect(await sendTicketReminderEmail(reminder)).toBe(false);
+  });
+});
+
+describe("sendTicketCancellationEmail", () => {
+  const cancellation = {
+    contactEmail: "dev@example.com",
+    firstName: "Dev",
+    eventName: "Wednesday Social",
+    refundedCents: 1500,
+  };
+
+  it("tells a refunded buyer their money is coming back", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    expect(await sendTicketCancellationEmail(cancellation)).toBe(true);
+
+    const msg = send.mock.calls[0][0];
+    expect(msg).toMatchObject({
+      from: TICKETS_FROM,
+      replyTo: REPLY_TO,
+      to: "dev@example.com",
+      subject: "Wednesday Social has been cancelled",
+    });
+    expect(msg.text).toContain("Your payment of $15.00 has been refunded in full.");
+    expect(msg.text).toContain("5–10 business days");
+    expect(msg.attachments).toBeUndefined();
+  });
+
+  it("tells an unrefunded buyer there's nothing further to do", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    await sendTicketCancellationEmail({ ...cancellation, refundedCents: 0 });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.text).toContain("You weren't charged for this ticket");
+    expect(msg.text).not.toContain("refunded");
+  });
+
+  it("treats a missing refundedCents the same as zero", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    await sendTicketCancellationEmail({
+      contactEmail: "dev@example.com",
+      firstName: "Dev",
+      eventName: "Wednesday Social",
+    });
+
+    expect(send.mock.calls[0][0].text).toContain("You weren't charged for this ticket");
+  });
+
+  it("reports failure when Resend answers with an error", async () => {
+    send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
+    expect(await sendTicketCancellationEmail(cancellation)).toBe(false);
   });
 });
 
