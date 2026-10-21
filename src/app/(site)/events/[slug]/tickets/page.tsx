@@ -30,9 +30,31 @@ export async function generateMetadata({
     slug: params.slug,
   });
   if (!event) return { title: "Tickets Not Found | SASA" };
+
+  const title = `Tickets — ${event.title} | SASA at Penn State`;
+  const description = `Get your tickets to ${event.title}.`;
+  // Falls back to the site logo for an event with no cover image.
+  const ogImageUrl = event.coverImage
+    ? urlFor(event.coverImage).width(1200).height(630).url()
+    : "/sasa-logo.png";
+
   return {
-    title: `Tickets — ${event.title} | SASA at Penn State`,
+    title,
     robots: { index: false, follow: false },
+    openGraph: {
+      title,
+      description,
+      siteName: "Penn State SASA",
+      locale: "en_US",
+      type: "website",
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: event.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImageUrl],
+    },
   };
 }
 

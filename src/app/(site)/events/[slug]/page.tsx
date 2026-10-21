@@ -26,10 +26,36 @@ export async function generateMetadata({
     slug: params.slug,
   });
   if (!event) return { title: "Event Not Found | SASA" };
+
+  const title = `${event.title} | SASA at Penn State`;
+  const description = event.description || `${event.title} — a SASA event`;
+  // Falls back to the site logo for an event with no cover image — setting
+  // openGraph/twitter at all here replaces (not merges with) the root
+  // layout's defaults, so title/description are repeated rather than
+  // inherited.
+  const ogImageUrl = event.coverImage
+    ? urlFor(event.coverImage).width(1200).height(630).url()
+    : "/sasa-logo.png";
+
   return {
-    title: `${event.title} | SASA at Penn State`,
-    description: event.description || `${event.title} — a SASA event`,
+    title,
+    description,
     alternates: { canonical: `/events/${params.slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `/events/${params.slug}`,
+      siteName: "Penn State SASA",
+      locale: "en_US",
+      type: "website",
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: event.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImageUrl],
+    },
   };
 }
 
