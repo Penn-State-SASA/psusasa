@@ -20,7 +20,7 @@ export const allEventsQuery = `*[_type == "event"] | order(date desc) {
 
 export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0] {
   _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
-  ticketingEnabled, cashPaymentEnabled, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents, salesOpen },
+  ticketingEnabled, cashPaymentEnabled, nonStudentPricingEnabled, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents, salesOpen },
   capacity, atDoorPriceCents,
   "category": category->{ _id, name, color }
 }`;
@@ -30,7 +30,7 @@ export const eventBySlugQuery = `*[_type == "event" && slug.current == $slug][0]
 // This query's results can reach the browser.
 export const eventByIdQuery = `*[_type == "event" && _id == $id][0] {
   _id, title, slug, date, endDate, hideEndTime, location, hideLocation, description, coverImage, isFeatured,
-  ticketingEnabled, cashPaymentEnabled, boardPlusOneEnabled, formerBoardExcludedKeys, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents, salesOpen },
+  ticketingEnabled, cashPaymentEnabled, nonStudentPricingEnabled, boardPlusOneEnabled, formerBoardExcludedKeys, ticketTypes[]{ _key, name, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents, salesOpen },
   capacity, atDoorPriceCents,
   "category": category->{ _id, name, color }
 }`;

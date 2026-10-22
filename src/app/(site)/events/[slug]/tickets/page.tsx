@@ -184,6 +184,7 @@ export default async function EventTicketsPage({ params }: TicketsPageProps) {
             ticketTypes={ticketTypes}
             remaining={remaining}
             cashPaymentEnabled={event.cashPaymentEnabled !== false}
+            nonStudentPricingEnabled={event.nonStudentPricingEnabled !== false}
           />
         </div>
       </section>

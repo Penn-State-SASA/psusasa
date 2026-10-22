@@ -188,6 +188,15 @@ export default defineType({
       initialValue: true,
     }),
     defineField({
+      name: "nonStudentPricingEnabled",
+      title: "Ask \"Are you a Penn State student?\"",
+      type: "boolean",
+      description:
+        "Turn off to go back to the simple layout: no student/non-student question, PSU email optional, and only Member/Non-Member pricing (the Non-Penn-State-Student price on each ticket type is ignored).",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      initialValue: true,
+    }),
+    defineField({
       name: "boardPlusOneEnabled",
       title: "Board +1 Check-In Enabled",
       type: "boolean",

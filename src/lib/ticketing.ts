@@ -68,7 +68,6 @@ export async function resolveTicketOrder({
   firstName,
   lastName,
 }: TicketOrderInput): Promise<ResolvedTicketOrder> {
-  const isPsuStudent = isPsuStudentInput !== false;
   if (typeof eventId !== "string" || !eventId) {
     throw new TicketOrderError("Missing event.");
   }
@@ -97,12 +96,19 @@ export async function resolveTicketOrder({
     throw new TicketOrderError("This ticket type is no longer on sale.");
   }
 
+  // When an event has opted out of the student/non-student question
+  // entirely, behave exactly as the site did before this feature existed:
+  // PSU email is optional and only ever affects member pricing — no
+  // mandatory requirement, no separate non-student tier.
+  const studentPricingEnabled = event.nonStudentPricingEnabled !== false;
+  const isPsuStudent = studentPricingEnabled ? isPsuStudentInput !== false : true;
+
   const emailInput = typeof psuEmail === "string" ? psuEmail.trim() : "";
 
   // Mandatory and format-checked server-side, not just client-side — a
   // buyer claiming to be a Penn State student can't bypass this by simply
   // leaving the PSU email field blank.
-  if (isPsuStudent && !PSU_MEMBER_EMAIL_RE.test(emailInput)) {
+  if (studentPricingEnabled && isPsuStudent && !PSU_MEMBER_EMAIL_RE.test(emailInput)) {
     throw new TicketOrderError(
       "A valid Penn State email (ending in @psu.edu) is required for Penn State students."
     );

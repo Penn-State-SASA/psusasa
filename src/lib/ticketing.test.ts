@@ -289,6 +289,43 @@ describe("resolveTicketOrder — non-students", () => {
   });
 });
 
+describe("resolveTicketOrder — event opted out of the student question", () => {
+  it("doesn't require a PSU email even when isPsuStudent is claimed true", async () => {
+    vi.mocked(sanityFetchSingle).mockResolvedValue(
+      makeEvent({ ticketTypes: [ga], nonStudentPricingEnabled: false })
+    );
+    const r = await order({ isPsuStudent: true, psuEmail: "" });
+    expect(r.isPsuStudent).toBe(true);
+    expect(r.subtotalCents).toBe(ga.nonMemberPriceCents);
+  });
+
+  it("ignores a client-claimed isPsuStudent: false and still prices as non-member (never non-student)", async () => {
+    vi.mocked(sanityFetchSingle).mockResolvedValue(
+      makeEvent({
+        ticketTypes: [{ ...ga, nonStudentPriceCents: 2500 }],
+        nonStudentPricingEnabled: false,
+      })
+    );
+    const r = await order({ isPsuStudent: false, psuEmail: "" });
+    expect(r.isPsuStudent).toBe(true);
+    expect(r.subtotalCents).toBe(ga.nonMemberPriceCents);
+  });
+
+  it("still gives member pricing to a matching PSU email", async () => {
+    vi.mocked(sanityFetchSingle).mockResolvedValue(
+      makeEvent({ ticketTypes: [ga], nonStudentPricingEnabled: false })
+    );
+    vi.mocked(lookupCurrentMember).mockResolvedValue({
+      isMember: true,
+      year: "Junior",
+      firstName: "Asha",
+      lastName: "Patel",
+    });
+    const r = await order({ psuEmail: "abc123@psu.edu" });
+    expect(r.isMember).toBe(true);
+  });
+});
+
 describe("resolveTicketOrder — capacity", () => {
   const capped = makeEvent({ ticketTypes: [ga], capacity: 100 });
 
