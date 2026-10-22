@@ -46,6 +46,8 @@ export interface SanityEvent {
   isFeatured: boolean;
   ticketingEnabled?: boolean;
   cashPaymentEnabled?: boolean;
+  /** False only when the event opted out of the student/non-student question entirely — unset/true means it's asked. */
+  nonStudentPricingEnabled?: boolean;
   boardPlusOneEnabled?: boolean;
   reminderEmailEnabled?: boolean;
   /** Hours before `date` to send the reminder email — only meaningful when reminderEmailEnabled is true. */

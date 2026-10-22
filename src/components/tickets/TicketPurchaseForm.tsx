@@ -45,6 +45,8 @@ interface TicketPurchaseFormProps {
   /** Seats left under the event-wide capacity — null when there's no limit. */
   remaining: number | null;
   cashPaymentEnabled: boolean;
+  /** False reverts to the pre-non-student-pricing layout: no student/non-student question, PSU email optional. */
+  nonStudentPricingEnabled: boolean;
 }
 
 function formatPrice(cents: number): string {
@@ -57,6 +59,7 @@ export default function TicketPurchaseForm({
   ticketTypes,
   remaining,
   cashPaymentEnabled,
+  nonStudentPricingEnabled,
 }: TicketPurchaseFormProps) {
   const purchasable = useMemo(
     () => ticketTypes.filter((t) => t.salesOpen),
@@ -185,14 +188,19 @@ export default function TicketPurchaseForm({
     // Mandatory and format-checked for a Penn State student — so a student
     // can't accidentally (or deliberately) skip it to land in the
     // non-student price. Not shown/validated at all once the buyer says
-    // they're not a student.
+    // they're not a student, or for an event that's opted out of this
+    // question entirely (nonStudentPricingEnabled false) — there it's
+    // optional again, same as before this feature existed.
     const trimmedPsu = psuEmail.trim();
-    if (isPsuStudent) {
+    if (nonStudentPricingEnabled && isPsuStudent) {
       if (!trimmedPsu) {
         next.psuEmail = "A Penn State email (ending in @psu.edu) is required.";
       } else if (!PSU_MEMBER_EMAIL_RE.test(trimmedPsu)) {
         next.psuEmail = "That doesn't look like a @psu.edu address.";
       }
+    } else if (trimmedPsu && !PSU_MEMBER_EMAIL_RE.test(trimmedPsu)) {
+      next.psuEmail =
+        "That doesn't look like a @psu.edu address — fix it, or clear the field to pay the non-member price.";
     }
 
     if (!ticketTypeKey) next.ticketTypeKey = "Please select a ticket type.";
@@ -208,6 +216,7 @@ export default function TicketPurchaseForm({
     firstName,
     lastName,
     contactEmail,
+    nonStudentPricingEnabled,
     isPsuStudent,
     psuEmail,
     ticketTypeKey,
@@ -459,6 +468,7 @@ export default function TicketPurchaseForm({
                 )}
               </div>
 
+              {nonStudentPricingEnabled && (
               <div>
                 <label className="block text-sm font-medium text-sasa-red-900 mb-2">
                   Are you a Penn State student?{" "}
@@ -523,13 +533,19 @@ export default function TicketPurchaseForm({
                   </label>
                 </div>
               </div>
+              )}
 
               {isPsuStudent && (
               <div>
                 <label className="block text-sm font-medium text-sasa-red-900 mb-1">
-                  PSU Email <span className="text-red-500">*</span>{" "}
+                  PSU Email{" "}
+                  {nonStudentPricingEnabled && (
+                    <span className="text-red-500">*</span>
+                  )}{" "}
                   <span className="font-normal text-sasa-neutral-400">
-                    (used to verify student status and check member pricing)
+                    {nonStudentPricingEnabled
+                      ? "(used to verify student status and check member pricing)"
+                      : "(optional — for member pricing on your own ticket)"}
                   </span>
                 </label>
                 <p className="mb-1 text-xs text-sasa-neutral-400">
