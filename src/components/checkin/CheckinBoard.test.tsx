@@ -11,6 +11,7 @@ import { FORMER_BOARD_TICKET_TYPE_KEY, mergeFormerBoardGuests } from "@/lib/form
 import { makeFormerBoardMember, makeTicketRecord } from "@/test/factories";
 import { ticketQrPayload } from "@/lib/ticketQrPayload";
 import type { ScanStatus } from "@/components/checkin/QrScanner";
+import type { ReactNode } from "react";
 
 // The real scanner needs a camera; this stand-in hands tests its onDetect
 // and shows the status the board gives it.
@@ -20,6 +21,7 @@ vi.mock("@/components/checkin/QrScanner", () => ({
     onDetect: (text: string) => unknown;
     onClose: () => void;
     status: ScanStatus | null;
+    children?: ReactNode;
   }) => {
     scanner.onDetect = props.onDetect;
     return (
@@ -27,6 +29,7 @@ vi.mock("@/components/checkin/QrScanner", () => ({
         <p data-testid="scan-status" data-tone={props.status?.tone ?? ""}>
           {props.status?.message ?? ""}
         </p>
+        {props.children}
         <button onClick={props.onClose}>Close</button>
       </div>
     );
@@ -902,53 +905,129 @@ describe("CheckinBoard — QR scanning", () => {
     expect(scanStatus()).toHaveAttribute("data-tone", "warn");
   });
 
-  it("hands a cash ticket to staff to collect, then brings the camera back", async () => {
+  const prompt = () => screen.getByRole("group", { name: "Scanned ticket" });
+
+  it("asks how many of a group are here, defaulting to everyone, without leaving the camera", async () => {
+    const user = userEvent.setup();
+    renderBoard([family, asha]);
+    await openScanner(user);
+
+    await scan(qr(family.id));
+
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+    expect(prompt()).toHaveTextContent("Neha Joshi");
+    expect(prompt()).toHaveTextContent("0 of 3 already in");
+    expect(screen.getByTestId("scan-prompt-count")).toHaveTextContent("3");
+    expect(sent("/mark")).toEqual([]);
+
+    await user.click(within(prompt()).getByRole("button", { name: "Check in 3" }));
+
+    expect(sent("/mark")).toEqual([{ recordId: family.id, checkedInCount: 3 }]);
+    expect(screen.queryByRole("group", { name: "Scanned ticket" })).not.toBeInTheDocument();
+    expect(scanStatus()).toHaveTextContent("✓ Neha Joshi: 3 checked in (3/3)");
+    expect(scanStatus()).toHaveAttribute("data-tone", "ok");
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
+  });
+
+  it("checks in part of a group, then offers the rest on the next scan", async () => {
+    const user = userEvent.setup();
+    renderBoard([family]);
+    await openScanner(user);
+
+    await scan(qr(family.id));
+    await user.click(screen.getByRole("button", { name: "Fewer people" }));
+    await user.click(screen.getByRole("button", { name: "Fewer people" }));
+    // Can't go below one person.
+    expect(screen.getByRole("button", { name: "Fewer people" })).toBeDisabled();
+    await user.click(within(prompt()).getByRole("button", { name: "Check in 1" }));
+
+    expect(sent("/mark")).toEqual([{ recordId: family.id, checkedInCount: 1 }]);
+    expect(scanStatus()).toHaveTextContent("✓ Neha Joshi: 1 checked in (1/3)");
+
+    await scan(qr(family.id));
+
+    expect(prompt()).toHaveTextContent("1 of 3 already in");
+    expect(screen.getByTestId("scan-prompt-count")).toHaveTextContent("2");
+    // Can't go above who's left.
+    expect(screen.getByRole("button", { name: "More people" })).toBeDisabled();
+  });
+
+  it("asks staff to collect cash for a single ticket before checking in", async () => {
     const user = userEvent.setup();
     renderBoard([arjun, asha]);
     await openScanner(user);
 
     await scan(qr(arjun.id));
 
-    // Camera closes, only the scanned row shows, and the cash prompt is up.
-    expect(screen.queryByRole("dialog", { name: "Scan tickets" })).not.toBeInTheDocument();
-    expect(screen.getByText("Scanned ticket")).toBeInTheDocument();
-    expect(screen.queryByText("Asha Patel")).not.toBeInTheDocument();
-    expect(screen.getByText(/Arjun Menon owes/)).toHaveTextContent("Arjun Menon owes $15.00.");
+    expect(prompt()).toHaveTextContent("Collect $15.00 cash");
+    expect(screen.queryByTestId("scan-prompt-count")).not.toBeInTheDocument();
     expect(sent("/mark")).toEqual([]);
 
-    await user.click(screen.getByRole("button", { name: "Collected — Check In" }));
+    await user.click(within(prompt()).getByRole("button", { name: "Collected $15.00 — Check in" }));
 
     expect(sent("/mark")).toEqual([{ recordId: arjun.id, checkedInCount: 1, paid: true }]);
+    expect(scanStatus()).toHaveTextContent("✓ Arjun Menon checked in");
     expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
-    expect(screen.queryByText("Scanned ticket")).not.toBeInTheDocument();
   });
 
-  it("shows a group's row for staff to count people in", async () => {
+  it("charges a cash group only for the people coming in now", async () => {
+    const cashFamily = { ...family, paymentMethod: "Cash" as const, paid: false };
     const user = userEvent.setup();
-    renderBoard([family, asha]);
+    renderBoard([cashFamily]);
+    await openScanner(user);
+
+    await scan(qr(cashFamily.id));
+    expect(prompt()).toHaveTextContent("Collect $45.00 cash");
+
+    await user.click(screen.getByRole("button", { name: "Fewer people" }));
+    expect(prompt()).toHaveTextContent("Collect $30.00 cash");
+    await user.click(within(prompt()).getByRole("button", { name: "Collected $30.00 — Check in 2" }));
+
+    expect(sent("/mark")).toEqual([{ recordId: cashFamily.id, checkedInCount: 2, paid: false }]);
+  });
+
+  it("cancels a prompt without checking anyone in", async () => {
+    const user = userEvent.setup();
+    renderBoard([family]);
     await openScanner(user);
 
     await scan(qr(family.id));
+    await user.click(within(prompt()).getByRole("button", { name: "Cancel" }));
 
-    expect(screen.queryByRole("dialog", { name: "Scan tickets" })).not.toBeInTheDocument();
-    expect(screen.getByText("0 / 3")).toBeInTheDocument();
-    expect(screen.queryByText("Asha Patel")).not.toBeInTheDocument();
     expect(sent("/mark")).toEqual([]);
-
-    await user.click(screen.getByRole("button", { name: "Show all" }));
-    expect(screen.getByText("Asha Patel")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Scanned ticket" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
   });
 
-  it("goes back to scanning from a pinned row with Scan next", async () => {
+  it("ignores other codes while staff are answering a prompt", async () => {
     const user = userEvent.setup();
-    renderBoard([family, asha]);
+    renderBoard([family, priya]);
     await openScanner(user);
+
     await scan(qr(family.id));
+    await scan(qr(priya.id));
 
-    await user.click(screen.getByRole("button", { name: "Scan next" }));
+    expect(sent("/mark")).toEqual([]);
+    expect(prompt()).toHaveTextContent("Neha Joshi");
+  });
 
-    expect(screen.getByRole("dialog", { name: "Scan tickets" })).toBeInTheDocument();
-    expect(screen.queryByText("Scanned ticket")).not.toBeInTheDocument();
+  it("reports a group check-in that didn't save", async () => {
+    fetchMock.mockImplementation(async (input) =>
+      String(input).endsWith("/mark")
+        ? respond({ error: "Failed to update." }, 500)
+        : respond({ tickets: serverTickets })
+    );
+    const user = userEvent.setup();
+    renderBoard([family]);
+    await openScanner(user);
+
+    await scan(qr(family.id));
+    await user.click(within(prompt()).getByRole("button", { name: "Check in 3" }));
+
+    await waitFor(() =>
+      expect(scanStatus()).toHaveTextContent("Couldn't check in Neha Joshi — try again")
+    );
+    expect(scanStatus()).toHaveAttribute("data-tone", "error");
   });
 
   it("refuses a ticket for a different event", async () => {
