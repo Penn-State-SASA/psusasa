@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { amountOwedCents, checkinUpdates, matchesSearch, psuIdOf } from "@/lib/checkin";
+import {
+  amountOwedCents,
+  cashDueCents,
+  checkinUpdates,
+  matchesSearch,
+  psuIdOf,
+} from "@/lib/checkin";
 import { makeTicketRecord } from "@/test/factories";
 
 describe("amountOwedCents", () => {
@@ -38,6 +44,30 @@ describe("amountOwedCents", () => {
   it("owes nothing on a malformed zero-quantity row rather than dividing by zero", () => {
     const t = makeTicketRecord({ paymentMethod: "Cash", amountPaidCents: 1500, quantity: 0 });
     expect(amountOwedCents(t)).toBe(0);
+  });
+});
+
+describe("cashDueCents", () => {
+  const cash = makeTicketRecord({
+    paymentMethod: "Cash",
+    quantity: 3,
+    amountPaidCents: 1000,
+  });
+
+  it("is the share for just the people coming in now", () => {
+    expect(cashDueCents({ ...cash, amountPaidCents: 4500 }, 1)).toBe(1500);
+    expect(cashDueCents({ ...cash, amountPaidCents: 4500 }, 2)).toBe(3000);
+  });
+
+  it("adds up to the exact total one arrival at a time, despite rounding", () => {
+    const shares = [0, 1, 2].map((checkedInCount) =>
+      cashDueCents({ ...cash, checkedInCount }, 1)
+    );
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(1000);
+  });
+
+  it("is nothing for a card order", () => {
+    expect(cashDueCents({ ...cash, paymentMethod: "Card" }, 1)).toBe(0);
   });
 });
 

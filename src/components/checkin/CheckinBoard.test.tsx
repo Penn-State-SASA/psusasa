@@ -391,9 +391,25 @@ describe("CheckinBoard — multi-ticket orders", () => {
     await user.click(screen.getByRole("button", { name: "Increase checked-in count" }));
 
     // 2 of 3 in on a $45 order: $15 left to collect.
-    expect(screen.getByText(/Meera Iyer owes/)).toHaveTextContent("Meera Iyer owes $15.00.");
+    expect(screen.getByText(/Meera Iyer owes/)).toHaveTextContent(
+      "Meera Iyer owes $15.00 for this guest."
+    );
     await user.click(screen.getByRole("button", { name: "Collected — Check In" }));
     expect(sent("/mark")).toEqual([{ recordId: "rec-party", checkedInCount: 3, paid: true }]);
+  });
+
+  it("asks only for one guest's share when a cash party's first person arrives", async () => {
+    const user = userEvent.setup();
+    renderBoard([{ ...party, paymentMethod: "Cash", paid: false, checkedInCount: 0 }]);
+
+    await user.click(screen.getByRole("button", { name: "Increase checked-in count" }));
+
+    // Nobody in on a $45 order for 3: this person's share, not the whole $45.
+    expect(screen.getByText(/Meera Iyer owes/)).toHaveTextContent(
+      "Meera Iyer owes $15.00 for this guest."
+    );
+    await user.click(screen.getByRole("button", { name: "Collected — Check In" }));
+    expect(sent("/mark")).toEqual([{ recordId: "rec-party", checkedInCount: 1, paid: false }]);
   });
 });
 
@@ -984,6 +1000,71 @@ describe("CheckinBoard — QR scanning", () => {
     await user.click(within(prompt()).getByRole("button", { name: "Collected $30.00 — Check in 2" }));
 
     expect(sent("/mark")).toEqual([{ recordId: cashFamily.id, checkedInCount: 2, paid: false }]);
+  });
+
+  describe("capacity warning", () => {
+    // One paid seat already taken, so a capacity of 1 means the event is full.
+    const seated = makeTicketRecord({ id: "recSeated00000001", paid: true });
+    const warning = () => within(prompt()).queryByRole("alert");
+
+    it("warns on a cash ticket that won't fit, but still lets staff check them in", async () => {
+      const user = userEvent.setup();
+      renderBoard([seated, arjun], { capacity: 1 });
+      await openScanner(user);
+
+      await scan(qr(arjun.id));
+      expect(warning()).toHaveTextContent(
+        "Over capacity: 1 / 1 seats taken, and this order needs 1."
+      );
+
+      await user.click(within(prompt()).getByRole("button", { name: "Collected $15.00 — Check in" }));
+      expect(sent("/mark")).toEqual([{ recordId: arjun.id, checkedInCount: 1, paid: true }]);
+    });
+
+    it("counts a cash group's whole order, even when only part of it is here", async () => {
+      const cashFamily = { ...family, paymentMethod: "Cash" as const, paid: false };
+      const user = userEvent.setup();
+      renderBoard([seated, cashFamily], { capacity: 3 });
+      await openScanner(user);
+
+      await scan(qr(cashFamily.id));
+      await user.click(screen.getByRole("button", { name: "Fewer people" }));
+
+      expect(warning()).toHaveTextContent(
+        "Over capacity: 1 / 3 seats taken, and this order needs 3."
+      );
+    });
+
+    it("stays quiet when the cash order fits", async () => {
+      const user = userEvent.setup();
+      renderBoard([seated, arjun], { capacity: 2 });
+      await openScanner(user);
+
+      await scan(qr(arjun.id));
+
+      expect(prompt()).toHaveTextContent("Collect $15.00 cash");
+      expect(warning()).not.toBeInTheDocument();
+    });
+
+    it("stays quiet for a card group, whose seats are already counted", async () => {
+      const user = userEvent.setup();
+      renderBoard([family], { capacity: 3 });
+      await openScanner(user);
+
+      await scan(qr(family.id));
+
+      expect(warning()).not.toBeInTheDocument();
+    });
+
+    it("stays quiet when the event has no limit", async () => {
+      const user = userEvent.setup();
+      renderBoard([seated, arjun]);
+      await openScanner(user);
+
+      await scan(qr(arjun.id));
+
+      expect(warning()).not.toBeInTheDocument();
+    });
   });
 
   it("cancels a prompt without checking anyone in", async () => {

@@ -76,6 +76,12 @@ export default function QrScanner({ onDetect, onClose, status, children }: QrSca
     onDetectRef.current = onDetect;
   }, [onDetect]);
 
+  const promptOpenRef = useRef(false);
+  const promptOpen = Boolean(children);
+  useEffect(() => {
+    promptOpenRef.current = promptOpen;
+  }, [promptOpen]);
+
   useEffect(() => {
     let stream: MediaStream | null = null;
     let frame = 0;
@@ -106,6 +112,13 @@ export default function QrScanner({ onDetect, onClose, status, children }: QrSca
       if (!code?.data) return;
 
       const seenAt = Date.now();
+      // While staff answer a prompt nothing fires. The code they're dealing
+      // with stays marked as in view, so it can't re-fire when they finish;
+      // any other code goes unrecorded, so the next guest's scans right after.
+      if (promptOpenRef.current) {
+        if (code.data === lastText) lastSeenAt = seenAt;
+        return;
+      }
       const repeat = code.data === lastText && seenAt - lastSeenAt < REPEAT_WINDOW_MS;
       lastText = code.data;
       lastSeenAt = seenAt;

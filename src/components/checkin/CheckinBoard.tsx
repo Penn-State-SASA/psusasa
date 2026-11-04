@@ -10,7 +10,13 @@ import {
   isFormerBoardVirtualId,
   rosterKeyFromVirtualId,
 } from "@/lib/formerBoard";
-import { amountOwedCents, checkinUpdates, matchesSearch, psuIdOf } from "@/lib/checkin";
+import {
+  amountOwedCents,
+  cashDueCents,
+  checkinUpdates,
+  matchesSearch,
+  psuIdOf,
+} from "@/lib/checkin";
 import { parseTicketQr } from "@/lib/ticketQrPayload";
 import QrScanner, { type ScanStatus } from "@/components/checkin/QrScanner";
 
@@ -544,6 +550,18 @@ export default function CheckinBoard({
   const capacityUsed = stats.capacityUsed + atDoorOffset;
   const atCapacity = capacity !== null && capacityUsed >= capacity;
 
+  // The scanner covers the board's Capacity stat, so the prompt has to say
+  // it. An unpaid cash order holds no seat until it's fully paid, at which
+  // point its whole quantity counts — card orders already hold theirs.
+  const promptCapacityWarning =
+    promptTicket &&
+    capacity !== null &&
+    promptTicket.paymentMethod === "Cash" &&
+    !promptTicket.paid &&
+    capacityUsed + promptTicket.quantity > capacity
+      ? `Over capacity: ${capacityUsed} / ${capacity} seats taken, and this order needs ${promptTicket.quantity}.`
+      : null;
+
   return (
     <div>
       <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
@@ -785,6 +803,7 @@ export default function CheckinBoard({
               ticket={promptTicket}
               count={promptCount}
               remaining={promptRemaining}
+              capacityWarning={promptCapacityWarning}
               onCountChange={(count) => setScanPrompt((p) => (p ? { ...p, count } : p))}
               onConfirm={confirmScanPrompt}
               onCancel={() => setScanPrompt(null)}
@@ -802,9 +821,10 @@ export default function CheckinBoard({
             <p className="mb-6 text-sm text-sasa-neutral-500">
               {confirmCash.firstName} {confirmCash.lastName} owes{" "}
               <span className="font-semibold text-sasa-red-900">
-                {formatPrice(amountOwedCents(confirmCash))}
+                {formatPrice(cashDueCents(confirmCash, 1))}
               </span>
-              . Confirm you&apos;ve collected payment before checking them in.
+              {confirmCash.quantity > 1 ? " for this guest" : ""}. Confirm you&apos;ve collected
+              payment before checking them in.
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -924,6 +944,7 @@ function ScanPartyPrompt({
   ticket,
   count,
   remaining,
+  capacityWarning,
   onCountChange,
   onConfirm,
   onCancel,
@@ -931,16 +952,13 @@ function ScanPartyPrompt({
   ticket: TicketRecord;
   count: number;
   remaining: number;
+  capacityWarning: string | null;
   onCountChange: (count: number) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const isGroup = ticket.quantity > 1;
-  // Same proportional estimate as the row's "Owes" badge, for just the
-  // people coming in now.
-  const collectCents =
-    amountOwedCents(ticket) -
-    amountOwedCents({ ...ticket, checkedInCount: ticket.checkedInCount + count });
+  const collectCents = cashDueCents(ticket, count);
   const checkInLabel = isGroup ? `Check in ${count}` : "Check in";
 
   return (
@@ -984,6 +1002,12 @@ function ScanPartyPrompt({
             </button>
           </div>
         </div>
+      )}
+
+      {capacityWarning && (
+        <p role="alert" className="mt-3 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-800">
+          {capacityWarning}
+        </p>
       )}
 
       {collectCents > 0 && (
