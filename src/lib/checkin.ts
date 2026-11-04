@@ -11,6 +11,14 @@ export function amountOwedCents(t: TicketRecord): number {
   return Math.round((t.amountPaidCents * (t.quantity - t.checkedInCount)) / t.quantity);
 }
 
+// What to collect for just the next `count` people through the door — the
+// same proportional estimate, so every arrival's share adds up to the total.
+export function cashDueCents(t: TicketRecord, count: number): number {
+  return (
+    amountOwedCents(t) - amountOwedCents({ ...t, checkedInCount: t.checkedInCount + count })
+  );
+}
+
 // Paid is fully derived from check-in progress on cash orders — no
 // separate manual toggle. Written alongside checkedInCount on every
 // change (either direction) purely so raw Airtable views/reports have a

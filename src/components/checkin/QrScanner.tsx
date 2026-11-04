@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import jsQR from "jsqr";
 
 export interface ScanStatus {
+  /** Distinct per scan, so the same result twice in a row still flashes. */
+  id: number;
   tone: "ok" | "warn" | "error";
   message: string;
 }
@@ -13,6 +15,9 @@ interface QrScannerProps {
   onClose: () => void;
   /** Result of the last scan, shown over the camera. */
   status: ScanStatus | null;
+  /** A prompt for staff (e.g. how many of a group are here), shown in
+   * place of the status line while the camera stays live behind it. */
+  children?: ReactNode;
 }
 
 // Decoding every frame is wasted battery on a phone held at the door all
@@ -25,18 +30,44 @@ const REPEAT_WINDOW_MS = 3000;
 // screen held up to the camera, and much faster than full resolution.
 const DECODE_WIDTH = 640;
 
+// How long the guide box stays in the result's colour after the flash.
+const HIGHLIGHT_MS = 1000;
+
 const TONE_CLASSES: Record<ScanStatus["tone"], string> = {
   ok: "bg-green-600 text-white",
   warn: "bg-amber-400 text-sasa-red-900",
   error: "bg-red-600 text-white",
 };
 
+const FLASH_CLASSES: Record<ScanStatus["tone"], string> = {
+  ok: "bg-green-500",
+  warn: "bg-amber-400",
+  error: "bg-red-600",
+};
+
+const GUIDE_CLASSES: Record<ScanStatus["tone"], string> = {
+  ok: "border-green-500",
+  warn: "border-amber-400",
+  error: "border-red-600",
+};
+
 // Full-screen camera view for the door check-in board. Uses jsQR rather
 // than the browser's BarcodeDetector, which iOS Safari doesn't have.
-export default function QrScanner({ onDetect, onClose, status }: QrScannerProps) {
+export default function QrScanner({ onDetect, onClose, status, children }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<ScanStatus["tone"] | null>(null);
+
+  // Each new result tints the guide box briefly, outlasting the flash.
+  const statusId = status?.id;
+  const statusTone = status?.tone;
+  useEffect(() => {
+    if (statusId === undefined || !statusTone) return;
+    setHighlight(statusTone);
+    const timer = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [statusId, statusTone]);
 
   // The scan loop starts once; this keeps it calling the board's latest
   // handler, which closes over the latest ticket list.
@@ -44,6 +75,12 @@ export default function QrScanner({ onDetect, onClose, status }: QrScannerProps)
   useEffect(() => {
     onDetectRef.current = onDetect;
   }, [onDetect]);
+
+  const promptOpenRef = useRef(false);
+  const promptOpen = Boolean(children);
+  useEffect(() => {
+    promptOpenRef.current = promptOpen;
+  }, [promptOpen]);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -75,6 +112,13 @@ export default function QrScanner({ onDetect, onClose, status }: QrScannerProps)
       if (!code?.data) return;
 
       const seenAt = Date.now();
+      // While staff answer a prompt nothing fires. The code they're dealing
+      // with stays marked as in view, so it can't re-fire when they finish;
+      // any other code goes unrecorded, so the next guest's scans right after.
+      if (promptOpenRef.current) {
+        if (code.data === lastText) lastSeenAt = seenAt;
+        return;
+      }
       const repeat = code.data === lastText && seenAt - lastSeenAt < REPEAT_WINDOW_MS;
       lastText = code.data;
       lastSeenAt = seenAt;
@@ -143,27 +187,45 @@ export default function QrScanner({ onDetect, onClose, status }: QrScannerProps)
               className="h-full w-full object-cover"
             />
             {/* Where to hold the code — decoding isn't limited to this box. */}
-            <div className="pointer-events-none absolute left-1/2 top-1/2 h-60 w-60 -translate-x-1/2 -translate-y-1/2 rounded-xl border-4 border-white/80" />
+            <div
+              data-testid="scan-guide"
+              className={`pointer-events-none absolute left-1/2 top-1/2 h-60 w-60 -translate-x-1/2 -translate-y-1/2 rounded-xl border-4 transition-colors ${
+                highlight ? GUIDE_CLASSES[highlight] : "border-white/80"
+              }`}
+            />
           </>
+        )}
+        {status && (
+          // Keyed by scan, so every result remounts it and replays the fade.
+          <div
+            key={status.id}
+            data-testid="scan-flash"
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 z-10 animate-scan-flash ${FLASH_CLASSES[status.tone]}`}
+          />
         )}
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      <div className="min-h-[4.5rem] px-4 pb-6 pt-3" role="status" aria-live="polite">
-        {status ? (
-          <p
-            className={`rounded-lg px-4 py-3 text-center text-base font-semibold ${TONE_CLASSES[status.tone]}`}
-          >
-            {status.message}
-          </p>
-        ) : (
-          !cameraError && (
-            <p className="text-center text-sm text-white/70">
-              Point the camera at the ticket&apos;s QR code.
+      {children ? (
+        <div className="px-4 pb-6 pt-3">{children}</div>
+      ) : (
+        <div className="min-h-[4.5rem] px-4 pb-6 pt-3" role="status" aria-live="polite">
+          {status ? (
+            <p
+              className={`rounded-lg px-4 py-3 text-center text-base font-semibold ${TONE_CLASSES[status.tone]}`}
+            >
+              {status.message}
             </p>
-          )
-        )}
-      </div>
+          ) : (
+            !cameraError && (
+              <p className="text-center text-sm text-white/70">
+                Point the camera at the ticket&apos;s QR code.
+              </p>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -32,6 +32,17 @@ const config: Config = {
         heading: ['var(--font-playfair)', 'Georgia', 'serif'],
         body: ['var(--font-inter)', 'Arial', 'sans-serif'],
       },
+      keyframes: {
+        // Door scanner: a full-screen wash of the result's colour that fades
+        // out, so back-to-back scans are unmistakable at a glance.
+        'scan-flash': {
+          '0%': { opacity: '0.75' },
+          '100%': { opacity: '0' },
+        },
+      },
+      animation: {
+        'scan-flash': 'scan-flash 700ms ease-out forwards',
+      },
     },
   },
   plugins: [],
