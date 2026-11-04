@@ -4,6 +4,11 @@ import { breakdownLabel, splitFromMetadata } from "@/lib/ticketLabels";
 describe("breakdownLabel", () => {
   it("describes a member-only order", () => {
     expect(breakdownLabel(1, 0)).toBe("1 ticket at member price");
+    expect(breakdownLabel(2, 0)).toBe("2 tickets at member price");
+  });
+
+  it("says non-Penn-State instead of non-member once the buyer isn't a student", () => {
+    expect(breakdownLabel(0, 1, false)).toBe("1 ticket at non-Penn-State price");
   });
 
   it("describes a non-member-only order", () => {

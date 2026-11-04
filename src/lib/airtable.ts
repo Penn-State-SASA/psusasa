@@ -9,6 +9,9 @@ export interface CurrentMemberInfo {
   isMember: boolean;
   /** The Members table's "Year" field for this person, or null if absent/not a member. */
   year: string | null;
+  /** The name on file in the Members table — used to confirm the ticket buyer is the actual member, not just someone who knows their email. Null if absent/not a member. */
+  firstName: string | null;
+  lastName: string | null;
 }
 
 // Every row in the "Members" table is treated as a currently valid member —
@@ -20,7 +23,8 @@ export async function lookupCurrentMember(psuEmail: string): Promise<CurrentMemb
   const baseUrl = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(tableName)}`;
 
   const email = psuEmail.trim().toLowerCase();
-  if (!email) return { isMember: false, year: null };
+  const notAMember = { isMember: false, year: null, firstName: null, lastName: null };
+  if (!email) return notAMember;
 
   const formula = `LOWER(TRIM({PSU Email})) = '${escapeForAirtableFormula(email)}'`;
 
@@ -35,24 +39,31 @@ export async function lookupCurrentMember(psuEmail: string): Promise<CurrentMemb
     );
   } catch (err) {
     console.error("Members lookup request failed:", err);
-    return { isMember: false, year: null };
+    return notAMember;
   }
 
   if (!res.ok) {
     console.error(
       `Members lookup failed: ${res.status} ${await res.text()}`
     );
-    return { isMember: false, year: null };
+    return notAMember;
   }
 
   const data = (await res.json()) as {
     records?: Array<{ fields?: Record<string, unknown> }>;
   };
   const record = data.records?.[0];
-  if (!record) return { isMember: false, year: null };
+  if (!record) return notAMember;
 
   const year = record.fields?.["Year"];
-  return { isMember: true, year: typeof year === "string" && year ? year : null };
+  const firstName = record.fields?.["First Name"];
+  const lastName = record.fields?.["Last Name"];
+  return {
+    isMember: true,
+    year: typeof year === "string" && year ? year : null,
+    firstName: typeof firstName === "string" && firstName ? firstName : null,
+    lastName: typeof lastName === "string" && lastName ? lastName : null,
+  };
 }
 
 // The webhook and the /join/return page both call this for the same
@@ -176,6 +187,8 @@ export interface TicketOrderMetadata {
   contactEmail: string;
   psuEmail: string;
   isMember: boolean;
+  /** False only when the buyer said they're not a Penn State student. */
+  isPsuStudent: boolean;
   /** The buyer's Members-table "Year", when this order got member pricing — null otherwise. */
   memberYear: string | null;
   eventId: string;
@@ -216,6 +229,7 @@ export async function appendTicketToAirtable(
     "Contact Email": order.contactEmail,
     "PSU Email": order.psuEmail,
     "Is Member": order.isMember,
+    "Is PSU Student": order.isPsuStudent,
     "Member Year": order.memberYear ?? "",
     "Event ID": order.eventId,
     "Event Name": order.eventName,
@@ -474,6 +488,9 @@ export interface TicketRecord {
   checkedInCount: number;
   checkedInAt: string | null;
   boardMemberName: string | null;
+  /** A real Stripe PaymentIntent id (starts with "pi_") — null for cash, at-door, free, or former-board rows, which reuse this Airtable column for other dedupe markers. */
+  stripePaymentIntentId: string | null;
+  reminderSent: boolean;
 }
 
 export async function listTicketsForEvent(
@@ -507,6 +524,12 @@ export async function listTicketsForEvent(
       checkedInCount: Number(f["Checked In Count"]) || 0,
       checkedInAt: f["Checked In At"] ? String(f["Checked In At"]) : null,
       boardMemberName: f["Board Member"] ? String(f["Board Member"]) : null,
+      stripePaymentIntentId:
+        typeof f["Stripe Payment Intent ID"] === "string" &&
+        f["Stripe Payment Intent ID"].startsWith("pi_")
+          ? f["Stripe Payment Intent ID"]
+          : null,
+      reminderSent: Boolean(f["Reminder Sent"]),
     };
   });
 }
@@ -558,6 +581,25 @@ export async function updateTicketCheckinState(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ fields }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Airtable update error: ${res.status} ${body}`);
+  }
+}
+
+// Marks a single row's reminder email as sent — called once per row right
+// after that row's email actually succeeds, so a later cron run (same day
+// or the next) never re-sends to someone already notified.
+export async function markReminderSent(recordId: string): Promise<void> {
+  const res = await fetch(`${ticketsBaseUrl()}/${recordId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fields: { "Reminder Sent": true } }),
   });
 
   if (!res.ok) {

@@ -80,6 +80,8 @@ export function mergeFormerBoardGuests(
         checkedInCount: 0,
         checkedInAt: null,
         boardMemberName: null,
+        stripePaymentIntentId: null,
+        reminderSent: false,
       })
     );
 

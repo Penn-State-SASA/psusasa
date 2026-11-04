@@ -96,7 +96,7 @@ export default defineType({
       title: "Ticket Types",
       type: "array",
       description:
-        "One entry per ticket tier (e.g. General Admission, VIP). Each has its own member and non-member price.",
+        "One entry per ticket tier (e.g. General Admission, VIP). Each has its own member, non-member, and non-Penn-State-student price.",
       hidden: ({ parent }) => !parent?.ticketingEnabled,
       of: [
         {
@@ -125,6 +125,14 @@ export default defineType({
               validation: (Rule) => Rule.required().integer().min(0),
             },
             {
+              name: "nonStudentPriceCents",
+              title: "Non-Penn-State-Student Price (in cents)",
+              description:
+                "Price for people who are not Penn State students at all (checked via PSU email on the purchase form). e.g. 1500 = $15.00. Leave blank to use the Non-Member price for non-students too.",
+              type: "number",
+              validation: (Rule) => Rule.integer().min(0),
+            },
+            {
               name: "salesOpen",
               title: "Sales Open",
               description:
@@ -138,13 +146,14 @@ export default defineType({
               title: "name",
               memberPriceCents: "memberPriceCents",
               nonMemberPriceCents: "nonMemberPriceCents",
+              nonStudentPriceCents: "nonStudentPriceCents",
             },
-            prepare({ title, memberPriceCents, nonMemberPriceCents }) {
+            prepare({ title, memberPriceCents, nonMemberPriceCents, nonStudentPriceCents }) {
               const fmt = (c: number) =>
                 typeof c === "number" ? `$${(c / 100).toFixed(2)}` : "—";
               return {
                 title: title || "Ticket Type",
-                subtitle: `Member ${fmt(memberPriceCents)} / Non-member ${fmt(nonMemberPriceCents)}`,
+                subtitle: `Member ${fmt(memberPriceCents)} / Non-member ${fmt(nonMemberPriceCents)} / Non-student ${fmt(nonStudentPriceCents)}`,
               };
             },
           },
@@ -179,6 +188,15 @@ export default defineType({
       initialValue: true,
     }),
     defineField({
+      name: "nonStudentPricingEnabled",
+      title: "Ask \"Are you a Penn State student?\"",
+      type: "boolean",
+      description:
+        "Turn off to go back to the simple layout: no student/non-student question, PSU email optional, and only Member/Non-Member pricing (the Non-Penn-State-Student price on each ticket type is ignored).",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      initialValue: true,
+    }),
+    defineField({
       name: "boardPlusOneEnabled",
       title: "Board +1 Check-In Enabled",
       type: "boolean",
@@ -186,6 +204,25 @@ export default defineType({
         "Turn on to let door staff register a board member's free +1 guest directly from the check-in board.",
       hidden: ({ parent }) => !parent?.ticketingEnabled,
       initialValue: false,
+    }),
+    defineField({
+      name: "reminderEmailEnabled",
+      title: "Send Reminder Email",
+      type: "boolean",
+      description:
+        "Turn on to automatically email everyone with a ticket a reminder before the event.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled,
+      initialValue: false,
+    }),
+    defineField({
+      name: "reminderHoursBefore",
+      title: "Reminder — Hours Before Event",
+      type: "number",
+      description:
+        "How many hours before the start time to send the reminder (24 = 1 day before, 48 = 2 days before). This is checked once a day, not continuously, so use 24 or more for a reliable send — a window under ~24 hours can land late or be missed entirely.",
+      hidden: ({ parent }) => !parent?.ticketingEnabled || !parent?.reminderEmailEnabled,
+      initialValue: 24,
+      validation: (Rule) => Rule.integer().min(1),
     }),
     defineField({
       name: "formerBoardExcludedKeys",

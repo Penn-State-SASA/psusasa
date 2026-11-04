@@ -26,6 +26,26 @@ interface CashOrderConfirmationDetails extends TicketQrIds {
   amountDueCents: number;
 }
 
+interface TicketCancellationDetails {
+  contactEmail: string;
+  firstName: string;
+  eventName: string;
+  /** What was actually refunded via Stripe, in cents — 0/undefined when nothing was charged. */
+  refundedCents?: number;
+}
+
+interface TicketReminderDetails extends TicketQrIds {
+  contactEmail: string;
+  firstName: string;
+  eventName: string;
+  /** Pre-formatted, e.g. "Saturday, October 18 at 7:00 PM" — this module doesn't do date math. */
+  eventDateTime: string;
+  /** Omit, or leave blank, when the event's location is hidden. */
+  eventLocation?: string | null;
+  /** True when the reminder is going out on the same calendar day as the event — swaps "is coming up" for "is today". */
+  isToday?: boolean;
+}
+
 const QR_CONTENT_ID = "ticket-qr";
 
 function formatPrice(cents: number): string {
@@ -158,6 +178,41 @@ export async function sendTicketConfirmationEmail(
   );
 }
 
+// Event cancellations. One-time, admin-triggered — not part of the normal
+// purchase flow. No QR code attached; there's nothing left to check in for.
+export async function sendTicketCancellationEmail(
+  details: TicketCancellationDetails
+): Promise<boolean> {
+  const refundedCents = details.refundedCents ?? 0;
+  return sendTicketEmail(
+    "Ticket cancellation",
+    details.contactEmail,
+    `${details.eventName} has been cancelled`,
+    () => [
+      greetingFor(details.firstName),
+      "",
+      `We're sorry to let you know that ${details.eventName} has unfortunately`,
+      "been cancelled due to unforeseen circumstances.",
+      "",
+      ...(refundedCents > 0
+        ? [
+            `Your payment of ${formatPrice(refundedCents)} has been refunded in full.`,
+            "Refunds typically take 5–10 business days to appear on your",
+            "statement, depending on your bank — no action is needed on your end.",
+          ]
+        : [
+            "You weren't charged for this ticket, so there's nothing further",
+            "you need to do.",
+          ]),
+      "",
+      "We apologize for the inconvenience and hope to see you at a future event.",
+      "",
+      "SASA",
+    ],
+    {}
+  );
+}
+
 // Unpaid cash orders — they're on the list, but still owe at the door. Sent
 // so they have their QR code and the amount to bring; same best-effort
 // contract as the card confirmation above.
@@ -183,6 +238,33 @@ export async function sendCashOrderConfirmationEmail(
       "change is recommended; we can't guarantee change will be available at",
       "the door. If the event reaches capacity before you arrive, entry is not",
       "guaranteed for cash orders — card purchases are confirmed in advance.",
+      "",
+      "See you there!",
+      "SASA",
+    ],
+    details
+  );
+}
+
+// Reminder emails — triggered by the cron job in
+// src/app/api/cron/send-event-reminders, not by the normal purchase flow.
+export async function sendTicketReminderEmail(
+  details: TicketReminderDetails
+): Promise<boolean> {
+  const when = details.isToday ? "today" : "coming up";
+  return sendTicketEmail(
+    "Ticket reminder",
+    details.contactEmail,
+    `Reminder: ${details.eventName} is ${when}!`,
+    (hasQr) => [
+      greetingFor(details.firstName),
+      "",
+      `Just a reminder that ${details.eventName} is ${when}:`,
+      "",
+      `When: ${details.eventDateTime}`,
+      ...(details.eventLocation ? [`Where: ${details.eventLocation}`] : []),
+      "",
+      doorLine(hasQr),
       "",
       "See you there!",
       "SASA",

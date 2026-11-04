@@ -3,14 +3,17 @@
 // alongside a breakdown that doesn't sum to it.
 export function breakdownLabel(
   memberUnits: number,
-  nonMemberUnits: number
+  nonMemberUnits: number,
+  /** False once the buyer said they're not a Penn State student — swaps "non-member" for "non-Penn-State" in the label. */
+  isPsuStudent = true
 ): string {
   const parts: string[] = [];
   if (memberUnits > 0) {
     parts.push(`${memberUnits} ticket${memberUnits === 1 ? "" : "s"} at member price`);
   }
   if (nonMemberUnits > 0) {
-    parts.push(`${nonMemberUnits} ticket${nonMemberUnits === 1 ? "" : "s"} at non-member price`);
+    const label = isPsuStudent ? "non-member" : "non-Penn-State";
+    parts.push(`${nonMemberUnits} ticket${nonMemberUnits === 1 ? "" : "s"} at ${label} price`);
   }
   return parts.join(" + ");
 }

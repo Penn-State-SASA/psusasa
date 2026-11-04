@@ -31,6 +31,8 @@ export default defineConfig({
       STRIPE_SECRET_KEY: "sk_test_unit_tests_only",
       STRIPE_WEBHOOK_SECRET: "whsec_unit_tests_only",
       SANITY_REVALIDATE_SECRET: "revalidate-secret-for-unit-tests-only",
+      // Vercel Cron's auth header check in the reminder-email route.
+      CRON_SECRET: "cron-secret-for-unit-tests-only",
       AIRTABLE_BASE_ID: "appUnitTests",
       AIRTABLE_API_KEY: "patUnitTests",
     },

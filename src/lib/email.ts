@@ -12,3 +12,12 @@ export function isPsuEmail(email: string): boolean {
 
 export const PSU_CONTACT_EMAIL_ERROR =
   "Please use a personal email, not your PSU email — confirmations go here.";
+
+/**
+ * Strict "is this a plain @psu.edu address" check — exact domain, no
+ * subdomains (unlike isPsuEmail above). Used both client-side on the
+ * purchase form and server-side in resolveTicketOrder to decide member
+ * pricing and to require a real PSU email when a buyer claims to be a
+ * Penn State student.
+ */
+export const PSU_MEMBER_EMAIL_RE = /^[^\s@]+@psu\.edu$/i;

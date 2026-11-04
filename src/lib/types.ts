@@ -25,6 +25,8 @@ export interface TicketType {
   name: string;
   memberPriceCents: number;
   nonMemberPriceCents: number;
+  /** Price for buyers who aren't Penn State students at all — unset falls back to nonMemberPriceCents. */
+  nonStudentPriceCents?: number;
   salesOpen: boolean;
 }
 
@@ -44,7 +46,12 @@ export interface SanityEvent {
   isFeatured: boolean;
   ticketingEnabled?: boolean;
   cashPaymentEnabled?: boolean;
+  /** False only when the event opted out of the student/non-student question entirely — unset/true means it's asked. */
+  nonStudentPricingEnabled?: boolean;
   boardPlusOneEnabled?: boolean;
+  reminderEmailEnabled?: boolean;
+  /** Hours before `date` to send the reminder email — only meaningful when reminderEmailEnabled is true. */
+  reminderHoursBefore?: number;
   /** Former board roster `_key`s NOT comped for this event — unset/empty means everyone on the roster gets in free. */
   formerBoardExcludedKeys?: string[];
   ticketTypes?: TicketType[];

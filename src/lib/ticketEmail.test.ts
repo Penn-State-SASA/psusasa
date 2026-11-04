@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendCashOrderConfirmationEmail, sendTicketConfirmationEmail } from "@/lib/ticketEmail";
+import {
+  sendCashOrderConfirmationEmail,
+  sendTicketCancellationEmail,
+  sendTicketConfirmationEmail,
+  sendTicketReminderEmail,
+} from "@/lib/ticketEmail";
 import { MEMBERSHIP_FROM, REPLY_TO, TICKETS_FROM } from "@/lib/emailSender";
 import { ticketQrPng } from "@/lib/ticketQr";
 import { muteConsole } from "@/test/console";
@@ -167,6 +172,114 @@ describe("sendCashOrderConfirmationEmail", () => {
   it("reports failure when Resend answers with an error", async () => {
     send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
     expect(await sendCashOrderConfirmationEmail(cash)).toBe(false);
+  });
+});
+
+describe("sendTicketReminderEmail", () => {
+  const reminder = {
+    contactEmail: "dev@example.com",
+    firstName: "Dev",
+    eventName: "Garba Night",
+    eventDateTime: "Saturday, October 18 at 7:00 PM",
+    eventLocation: "HUB Flex Theatre",
+    recordId: "recBBBBBBBBBBBBBB",
+    eventId: "event-1",
+  };
+
+  it("reminds them when and where, and includes the QR code", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    expect(await sendTicketReminderEmail(reminder)).toBe(true);
+
+    const msg = send.mock.calls[0][0];
+    expect(msg).toMatchObject({
+      from: TICKETS_FROM,
+      replyTo: REPLY_TO,
+      to: "dev@example.com",
+      subject: "Reminder: Garba Night is coming up!",
+    });
+    expect(msg.text).toContain("When: Saturday, October 18 at 7:00 PM");
+    expect(msg.text).toContain("Where: HUB Flex Theatre");
+    expect(msg.text).toContain("Show the QR code in this email at the door.");
+    expect(msg.attachments?.[0]).toMatchObject({ contentId: "ticket-qr" });
+  });
+
+  it("omits the Where line when no location is given", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, eventLocation: null });
+    expect(send.mock.calls[0][0].text).not.toContain("Where:");
+  });
+
+  it("says the event is today when sent same-day", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, isToday: true });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.subject).toBe("Reminder: Garba Night is today!");
+    expect(msg.text).toContain("Just a reminder that Garba Night is today:");
+  });
+
+  it("says the event is coming up when sent ahead of time", async () => {
+    send.mockResolvedValue({ data: { id: "email_3" }, error: null });
+    await sendTicketReminderEmail({ ...reminder, isToday: false });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.subject).toBe("Reminder: Garba Night is coming up!");
+    expect(msg.text).toContain("Just a reminder that Garba Night is coming up:");
+  });
+
+  it("reports failure when Resend answers with an error", async () => {
+    send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
+    expect(await sendTicketReminderEmail(reminder)).toBe(false);
+  });
+});
+
+describe("sendTicketCancellationEmail", () => {
+  const cancellation = {
+    contactEmail: "dev@example.com",
+    firstName: "Dev",
+    eventName: "Wednesday Social",
+    refundedCents: 1500,
+  };
+
+  it("tells a refunded buyer their money is coming back", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    expect(await sendTicketCancellationEmail(cancellation)).toBe(true);
+
+    const msg = send.mock.calls[0][0];
+    expect(msg).toMatchObject({
+      from: TICKETS_FROM,
+      replyTo: REPLY_TO,
+      to: "dev@example.com",
+      subject: "Wednesday Social has been cancelled",
+    });
+    expect(msg.text).toContain("Your payment of $15.00 has been refunded in full.");
+    expect(msg.text).toContain("5–10 business days");
+    expect(msg.attachments).toBeUndefined();
+  });
+
+  it("tells an unrefunded buyer there's nothing further to do", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    await sendTicketCancellationEmail({ ...cancellation, refundedCents: 0 });
+
+    const msg = send.mock.calls[0][0];
+    expect(msg.text).toContain("You weren't charged for this ticket");
+    expect(msg.text).not.toContain("refunded");
+  });
+
+  it("treats a missing refundedCents the same as zero", async () => {
+    send.mockResolvedValue({ data: { id: "email_4" }, error: null });
+    await sendTicketCancellationEmail({
+      contactEmail: "dev@example.com",
+      firstName: "Dev",
+      eventName: "Wednesday Social",
+    });
+
+    expect(send.mock.calls[0][0].text).toContain("You weren't charged for this ticket");
+  });
+
+  it("reports failure when Resend answers with an error", async () => {
+    send.mockResolvedValue({ data: null, error: { name: "validation_error", message: "nope" } });
+    expect(await sendTicketCancellationEmail(cancellation)).toBe(false);
   });
 });
 

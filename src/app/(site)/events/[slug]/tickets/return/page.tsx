@@ -47,11 +47,12 @@ export default async function TicketsReturnPage({
   // Always show what Stripe actually charged, never a re-derived price.
   const amountCents = paymentIntent?.amount ?? 0;
   const isMember = m.isMember === "true";
+  const isPsuStudent = m.isPsuStudent !== "false";
   const eventName = m.eventName ?? "your event";
   const ticketTypeName = m.ticketTypeName ?? "Ticket";
   const quantity = Number(m.quantity) || 1;
   const { memberUnits, nonMemberUnits } = splitFromMetadata(m, quantity);
-  const priceLabel = breakdownLabel(memberUnits, nonMemberUnits);
+  const priceLabel = breakdownLabel(memberUnits, nonMemberUnits, isPsuStudent);
 
   let ticketQr: string | null = null;
 
@@ -67,6 +68,7 @@ export default async function TicketsReturnPage({
           contactEmail: m.contactEmail ?? "",
           psuEmail: m.psuEmail ?? "",
           isMember,
+          isPsuStudent,
           memberYear: m.memberYear || null,
           eventId: m.eventId ?? "",
           eventName,

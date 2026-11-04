@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
             contactEmail: metadata.contactEmail ?? "",
             psuEmail: metadata.psuEmail ?? "",
             isMember: metadata.isMember === "true",
+            isPsuStudent: metadata.isPsuStudent !== "false",
             memberYear: metadata.memberYear || null,
             eventId: metadata.eventId ?? "",
             eventName,

@@ -8,6 +8,7 @@ import {
   hasUsedMemberPricing,
   listTicketsForEvent,
   lookupCurrentMember,
+  markReminderSent,
   sumCapacityUsed,
   updateTicketCheckinState,
   upsertFormerBoardCheckin,
@@ -40,6 +41,7 @@ const order: TicketOrderMetadata = {
   contactEmail: "asha@example.com",
   psuEmail: "abc123@psu.edu",
   isMember: true,
+  isPsuStudent: true,
   memberYear: "Junior",
   eventId: "event-1",
   eventName: "Diwali Night",
@@ -64,11 +66,15 @@ afterEach(() => {
 });
 
 describe("lookupCurrentMember", () => {
-  it("finds a member by case- and space-insensitive PSU email and returns their year", async () => {
-    fetchMock.mockResolvedValue(json({ records: [{ fields: { Year: "Senior" } }] }));
+  it("finds a member by case- and space-insensitive PSU email and returns their year and name", async () => {
+    fetchMock.mockResolvedValue(
+      json({ records: [{ fields: { Year: "Senior", "First Name": "Asha", "Last Name": "Patel" } }] })
+    );
     expect(await lookupCurrentMember("  ABC123@PSU.EDU ")).toEqual({
       isMember: true,
       year: "Senior",
+      firstName: "Asha",
+      lastName: "Patel",
     });
     expect(formulaOfCall()).toBe("LOWER(TRIM({PSU Email})) = 'abc123@psu.edu'");
     expect(String(fetchMock.mock.calls[0][0])).toContain("maxRecords=1");
@@ -90,28 +96,53 @@ describe("lookupCurrentMember", () => {
 
   it("returns non-member when nobody matches", async () => {
     fetchMock.mockResolvedValue(json({ records: [] }));
-    expect(await lookupCurrentMember("nobody@psu.edu")).toEqual({ isMember: false, year: null });
+    expect(await lookupCurrentMember("nobody@psu.edu")).toEqual({
+      isMember: false,
+      year: null,
+      firstName: null,
+      lastName: null,
+    });
   });
 
-  it("returns a null year for a member row without one", async () => {
+  it("returns a null year and name for a member row without either", async () => {
     fetchMock.mockResolvedValue(json({ records: [{ fields: {} }] }));
-    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({ isMember: true, year: null });
+    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({
+      isMember: true,
+      year: null,
+      firstName: null,
+      lastName: null,
+    });
   });
 
   // This decides a charge. When Airtable can't answer, the buyer pays the
   // non-member price rather than getting a discount by accident.
   it("falls back to non-member when Airtable returns an error", async () => {
     fetchMock.mockResolvedValue(json({ error: "RATE_LIMITED" }, 429));
-    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({ isMember: false, year: null });
+    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({
+      isMember: false,
+      year: null,
+      firstName: null,
+      lastName: null,
+    });
   });
 
   it("falls back to non-member when the request fails outright", async () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
-    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({ isMember: false, year: null });
+    expect(await lookupCurrentMember("abc123@psu.edu")).toEqual({
+      isMember: false,
+      year: null,
+      firstName: null,
+      lastName: null,
+    });
   });
 
   it("doesn't call Airtable for a blank email", async () => {
-    expect(await lookupCurrentMember("   ")).toEqual({ isMember: false, year: null });
+    expect(await lookupCurrentMember("   ")).toEqual({
+      isMember: false,
+      year: null,
+      firstName: null,
+      lastName: null,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -286,6 +317,7 @@ describe("appendTicketToAirtable", () => {
       "Stripe Payment Intent ID": "pi_123",
       "Amount Paid": 25.73,
       "Is Member": true,
+      "Is PSU Student": true,
       "Member Year": "Junior",
       Quantity: 2,
       Paid: true,
@@ -402,6 +434,7 @@ describe("listTicketsForEvent", () => {
               Paid: false,
               "Checked In Count": 1,
               "Board Member": "Ravi Shah",
+              "Reminder Sent": true,
             },
           },
         ],
@@ -419,6 +452,7 @@ describe("listTicketsForEvent", () => {
       checkedInAt: null,
       memberYear: null,
       boardMemberName: "Ravi Shah",
+      reminderSent: true,
     });
   });
 
@@ -440,6 +474,7 @@ describe("listTicketsForEvent", () => {
       amountPaidCents: 0,
       checkedInCount: 0,
       boardMemberName: null,
+      reminderSent: false,
     });
   });
 });
@@ -553,5 +588,19 @@ describe("getTicketRecordInfo", () => {
   it("treats an unreadable quantity as zero, so no check-in count is valid", async () => {
     fetchMock.mockResolvedValue(json({ id: "rec1", fields: { "Event ID": "event-1" } }));
     expect(await getTicketRecordInfo("rec1")).toEqual({ eventId: "event-1", quantity: 0 });
+  });
+});
+
+describe("markReminderSent", () => {
+  it("writes Reminder Sent to the given record", async () => {
+    fetchMock.mockResolvedValue(json({}));
+    await markReminderSent("rec1");
+    expect(bodyOfCall()).toEqual({ fields: { "Reminder Sent": true } });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/rec1$/);
+  });
+
+  it("throws when Airtable rejects the update", async () => {
+    fetchMock.mockResolvedValue(json({ error: "NOT_FOUND" }, 404));
+    await expect(markReminderSent("recMissing")).rejects.toThrow(/Airtable update error: 404/);
   });
 });
